@@ -17,7 +17,7 @@
     textarea{width:100%;min-height:300px;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:14px;background:transparent;color:inherit;font:inherit}
     .controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}.field{display:flex;flex-direction:column;gap:5px}.field label{font-size:.84rem;color:var(--muted)}input[type=range]{width:100%}select,input[type=number],input[type=text]{border:1px solid var(--line);border-radius:9px;padding:9px;background:transparent;color:inherit}
     .checks{display:flex;flex-wrap:wrap;gap:16px;margin:12px 0}.checks label{display:flex;gap:8px;align-items:center}.buttons{display:flex;flex-wrap:wrap;gap:10px}.btn{border:0;border-radius:10px;padding:10px 14px;font-weight:650;cursor:pointer;background:var(--accent);color:white}.btn.secondary{background:transparent;color:var(--text);border:1px solid var(--line)}.btn:disabled{opacity:.45;cursor:not-allowed}
-    #study{display:none}.study-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:12px}.progress{height:8px;background:var(--line);border-radius:999px;overflow:hidden}.progress>div{height:100%;background:var(--accent);width:0}.content{font-size:1.08rem}.content p{margin:.85rem 0}.content pre{white-space:pre-wrap;overflow:auto;border-left:4px solid var(--line);padding:10px 12px;background:color-mix(in srgb,var(--panel),var(--line) 18%);border-radius:8px}.gap{display:inline-block;min-width:3.2em;border-bottom:2px solid var(--accent);font-weight:700;letter-spacing:.08em;text-align:center}.gap-num{font-size:.7em;vertical-align:super;color:var(--accent);font-weight:700;margin-left:2px}.answers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:18px}.answer-row{display:grid;grid-template-columns:38px 1fr;gap:8px;align-items:center}.answer-row span{text-align:right;color:var(--muted)}.answer-row input.correct{border-color:var(--good);outline:2px solid color-mix(in srgb,var(--good),transparent 75%)}.answer-row input.wrong{border-color:var(--bad);outline:2px solid color-mix(in srgb,var(--bad),transparent 75%)}
+    #study{display:none}.study-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:12px}.progress{height:8px;background:var(--line);border-radius:999px;overflow:hidden}.progress>div{height:100%;background:var(--accent);width:0}.content{font-size:1.08rem}.content p{margin:.85rem 0}.content pre{white-space:pre-wrap;overflow:auto;border-left:4px solid var(--line);padding:10px 12px;background:color-mix(in srgb,var(--panel),var(--line) 18%);border-radius:8px}.gap{display:inline-block;min-width:3.2em;border-bottom:2px solid var(--accent);font-weight:700;letter-spacing:.08em;text-align:center;cursor:pointer;scroll-margin-top:24px;border-radius:4px;padding:0 2px}.gap:active,.gap.active{background:color-mix(in srgb,var(--accent),transparent 82%)}.gap.solved{min-width:0;border-bottom:0;letter-spacing:normal;text-align:initial;padding:0;background:transparent;cursor:default}.latex-gap-group{cursor:pointer;scroll-margin-top:24px}.answer-row{scroll-margin-top:18px}.gap-num{font-size:.7em;vertical-align:super;color:var(--accent);font-weight:700;margin-left:2px}.answers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:18px}.answer-row{display:grid;grid-template-columns:38px 1fr;gap:8px;align-items:center}.answer-row span{text-align:right;color:var(--muted)}.answer-row input.correct{border-color:var(--good);outline:2px solid color-mix(in srgb,var(--good),transparent 75%)}.answer-row input.wrong{border-color:var(--bad);outline:2px solid color-mix(in srgb,var(--bad),transparent 75%)}
     .feedback{min-height:1.4em;margin-top:12px;font-weight:650}.good{color:var(--good)}.bad{color:var(--bad)}.nav{display:flex;justify-content:space-between;gap:10px;margin-top:18px}.hint{font-size:.9rem;color:var(--muted);margin-top:10px}.hidden{display:none!important}
     @media(max-width:760px){.controls{grid-template-columns:1fr 1fr}.answers{grid-template-columns:1fr}.shell{padding:14px}.panel{padding:14px}}
   </style>
@@ -97,19 +97,59 @@ function latexGap(raw,state){
   let body=raw.slice(delim[0].length,raw.length-delim[1].length), id=0;
   const toks=[]; body.replace(/\\text\{([^{}]+)\}|[A-Za-z][A-Za-z0-9_]*/g,(m,inner,off)=>{const w=inner||m.replace(/^\\text\{|\}$/g,'');if(candidate(w)){toks.push({m,w,off,id:id++})}});
   if(!toks.length)return escapeHtml(raw);
-  const selected=choose(toks.map(t=>({id:t.id,word:t.w,low:t.w.toLowerCase(),ok:true}))); let out='',pos=0;
-  toks.forEach(t=>{out+=body.slice(pos,t.off);if(selected.has(t.id)){const n=state.gaps.length+1;state.gaps.push({answer:t.w,num:n});const visible=$('#partial').checked?t.w.slice(0,Math.max(1,Math.min(2,Math.floor(t.w.length*.3)))):'';out+=`\\underbrace{\\text{${visible}}\\hspace{${Math.max(1.4,t.w.length*.28)}em}}_{\\text{${n}}}`;}else out+=t.m;pos=t.off+t.m.length});out+=body.slice(pos);return escapeHtml(delim[0]+out+delim[1]);
+  const selected=choose(toks.map(t=>({id:t.id,word:t.w,low:t.w.toLowerCase(),ok:true}))); let out='',pos=0,formulaGapIds=[];
+  toks.forEach(t=>{out+=body.slice(pos,t.off);if(selected.has(t.id)){const n=state.gaps.length+1;state.gaps.push({answer:t.w,num:n,latex:true});formulaGapIds.push(n);const visible=$('#partial').checked?t.w.slice(0,Math.max(1,Math.min(2,Math.floor(t.w.length*.3)))):'';out+=`\\underbrace{\\text{${visible}}\\hspace{${Math.max(1.4,t.w.length*.28)}em}}_{\\text{${n}}}`;}else out+=t.m;pos=t.off+t.m.length});out+=body.slice(pos);
+  const rendered=escapeHtml(delim[0]+out+delim[1]);
+  return formulaGapIds.length?`<span class="latex-gap-group" data-gap-ids="${formulaGapIds.join(',')}">${rendered}</span>`:rendered;
 }
 function escapeHtml(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 function renderPage(raw){
   const state={gaps:[]}; let html=''; const lines=raw.split('\n'); let paragraph=[];
   function flush(){if(!paragraph.length)return;let txt=paragraph.join('\n'), heading=/^#{1,6}\s|^[0-9]+\.\s+[^.]{0,80}$/.test(txt.trim());const segments=protectSegments(txt);let wordId=0,wordObjs=[];
     segments.forEach(s=>{if(s.type==='text')s.text.replace(/[\p{L}][\p{L}\p{N}_'-]*/gu,w=>{wordObjs.push({id:wordId++,word:w,low:w.toLowerCase(),ok:candidate(w,heading)});return w})}); const selected=choose(wordObjs);wordId=0;let ph='';
-    segments.forEach(s=>{if(s.type==='latex'){ph+=latexGap(s.text,state);return}if(s.type==='diagram'){ph+=`<pre>${escapeHtml(s.text.replace(/^```[^\n]*\n?|```$/g,''))}</pre>`;return}ph+=escapeHtml(s.text).replace(/[\p{L}][\p{L}\p{N}_'-]*/gu,w=>{const id=wordId++;if(!selected.has(id))return w;const n=state.gaps.length+1;state.gaps.push({answer:w,num:n});const mask=$('#partial').checked?partialMask(w):'_'.repeat(Math.min(12,Math.max(4,w.length)));return `<span class="gap">${mask}</span><sup class="gap-num">${n}</sup>`})}); html+=heading?`<h3>${ph}</h3>`:`<p>${ph.replace(/\n/g,'<br>')}</p>`;paragraph=[]}
+    segments.forEach(s=>{if(s.type==='latex'){ph+=latexGap(s.text,state);return}if(s.type==='diagram'){ph+=`<pre>${escapeHtml(s.text.replace(/^```[^\n]*\n?|```$/g,''))}</pre>`;return}ph+=escapeHtml(s.text).replace(/[\p{L}][\p{L}\p{N}_'-]*/gu,w=>{const id=wordId++;if(!selected.has(id))return w;const n=state.gaps.length+1;state.gaps.push({answer:w,num:n});const mask=$('#partial').checked?partialMask(w):'_'.repeat(Math.min(12,Math.max(4,w.length)));return `<span class="gap" id="gap-${n}" data-gap="${n}" role="button" tabindex="0" aria-label="Answer gap ${n}">${mask}</span><sup class="gap-num" data-gap="${n}">${n}</sup>`})}); html+=heading?`<h3>${ph}</h3>`:`<p>${ph.replace(/\n/g,'<br>')}</p>`;paragraph=[]}
   for(const line of lines){if(isDiagramLine(line)){flush();html+=`<pre>${escapeHtml(line)}</pre>`}else paragraph.push(line)}flush();return {html,gaps:state.gaps};
 }
 function start(){const text=$('#source').value.trim();if(!text){alert('Paste some text first.');return}pages=splitIntoPages(text,+$('#chunk').value).map(renderPage);page=0;totalCorrect=0;totalAnswered=0;$('#setup').style.display='none';$('#study').style.display='block';show()}
-function show(){const p=pages[page];$('#content').innerHTML=p.html;$('#answers').innerHTML=p.gaps.map(g=>`<label class="answer-row"><span>${g.num}.</span><input type="text" data-answer="${escapeHtml(g.answer)}" autocomplete="off" spellcheck="false"></label>`).join('');$('#pageLabel').textContent=`Part ${page+1} of ${pages.length}`;$('#bar').style.width=((page+1)/pages.length*100)+'%';$('#feedback').textContent='';$('#scoreLabel').textContent=totalAnswered?`${totalCorrect}/${totalAnswered} correct`:'';$('#prev').disabled=page===0;$('#next').textContent=page===pages.length-1?'Finish':'Next';setTimeout(()=>{if(window.renderMathInElement)renderMathInElement($('#content'),{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false}],throwOnError:false})},0)}
+function show(){
+  const p=pages[page];
+  $('#content').innerHTML=p.html;
+  $('#answers').innerHTML=p.gaps.map(g=>`<label class="answer-row" id="answer-row-${g.num}"><span>${g.num}.</span><input type="text" data-gap="${g.num}" data-answer="${escapeHtml(g.answer)}" autocomplete="off" autocapitalize="none" enterkeyhint="done" spellcheck="false"></label>`).join('');
+  $('#pageLabel').textContent=`Part ${page+1} of ${pages.length}`;$('#bar').style.width=((page+1)/pages.length*100)+'%';$('#feedback').textContent='';$('#scoreLabel').textContent=totalAnswered?`${totalCorrect}/${totalAnswered} correct`:'';$('#prev').disabled=page===0;$('#next').textContent=page===pages.length-1?'Finish':'Next';
+  setTimeout(()=>{if(window.renderMathInElement)renderMathInElement($('#content'),{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false}],throwOnError:false})},0);
+  bindGapNavigation();
+}
+
+function scrollToAnswer(num){
+  const row=document.getElementById(`answer-row-${num}`), input=row?.querySelector('input');
+  if(!row||!input)return;
+  document.querySelectorAll('.gap.active').forEach(x=>x.classList.remove('active'));
+  document.getElementById(`gap-${num}`)?.classList.add('active');
+  row.scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>{input.focus({preventScroll:true});input.select()},450);
+}
+function scrollBackToGap(num){
+  const target=document.getElementById(`gap-${num}`)||document.querySelector(`.latex-gap-group[data-gap-ids~="${num}"]`);
+  if(target){target.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>target.classList?.remove('active'),500)}
+}
+function checkOne(input){
+  const num=input.dataset.gap,ok=norm(input.value)===norm(input.dataset.answer);
+  input.classList.toggle('correct',ok);input.classList.toggle('wrong',!ok);
+  const gap=document.getElementById(`gap-${num}`);
+  if(ok&&gap){gap.textContent=input.dataset.answer;gap.classList.add('solved');gap.removeAttribute('role');gap.removeAttribute('tabindex')}
+  $('#feedback').innerHTML=ok?`<span class="good">Correct.</span>`:`<span class="bad">Not correct yet.</span>`;
+  input.blur();setTimeout(()=>scrollBackToGap(num),120);
+  return ok;
+}
+function bindGapNavigation(){
+  $('#content').onclick=e=>{
+    const direct=e.target.closest('[data-gap]');if(direct){scrollToAnswer(direct.dataset.gap);return}
+    const formula=e.target.closest('.latex-gap-group');if(formula){const ids=formula.dataset.gapIds.split(',');const unresolved=ids.find(id=>!document.querySelector(`#answer-row-${id} input.correct`))||ids[0];scrollToAnswer(unresolved)}
+  };
+  $('#content').onkeydown=e=>{const gap=e.target.closest('.gap[data-gap]');if(gap&&(e.key==='Enter'||e.key===' ')){e.preventDefault();scrollToAnswer(gap.dataset.gap)}};
+  document.querySelectorAll('#answers input').forEach(input=>input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkOne(input)}}));
+}
+
 function norm(s){return s.trim().toLocaleLowerCase().replace(/[’]/g,"'").normalize('NFKD').replace(/\p{M}/gu,'')}
 $('#generate').onclick=start;$('#prev').onclick=()=>{if(page>0){page--;show()}};$('#next').onclick=()=>{if(page<pages.length-1){page++;show()}else{$('#feedback').innerHTML=`<span class="good">Finished. Overall checked score: ${totalCorrect}/${totalAnswered || 0}.</span>`}};
 $('#check').onclick=()=>{let c=0,n=0;document.querySelectorAll('#answers input').forEach(inp=>{n++;const ok=norm(inp.value)===norm(inp.dataset.answer);inp.classList.toggle('correct',ok);inp.classList.toggle('wrong',!ok);if(ok)c++});totalCorrect+=c;totalAnswered+=n;$('#feedback').innerHTML=c===n?`<span class="good">All ${n} correct.</span>`:`<span class="bad">${c} of ${n} correct. Incorrect fields are marked.</span>`;$('#scoreLabel').textContent=`${totalCorrect}/${totalAnswered} correct`};
