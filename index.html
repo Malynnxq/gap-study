@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gap Study</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <style>
+    :root { color-scheme: light dark; --bg:#f4f5f7; --panel:#fff; --text:#17191d; --muted:#68707d; --line:#dfe3e8; --accent:#3457d5; --good:#19733b; --bad:#b3261e; }
+    @media (prefers-color-scheme: dark){:root{--bg:#111318;--panel:#191c22;--text:#f2f4f8;--muted:#aab1bd;--line:#303640;--accent:#9db2ff;--good:#78d69a;--bad:#ff9b94}}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .shell{max-width:1050px;margin:auto;padding:24px}.top{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;margin-bottom:18px}.top h1{font-size:clamp(1.6rem,4vw,2.4rem);margin:0}.top p{margin:.35rem 0 0;color:var(--muted)}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 8px 30px rgba(0,0,0,.06)}
+    textarea{width:100%;min-height:300px;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:14px;background:transparent;color:inherit;font:inherit}
+    .controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}.field{display:flex;flex-direction:column;gap:5px}.field label{font-size:.84rem;color:var(--muted)}input[type=range]{width:100%}select,input[type=number],input[type=text]{border:1px solid var(--line);border-radius:9px;padding:9px;background:transparent;color:inherit}
+    .checks{display:flex;flex-wrap:wrap;gap:16px;margin:12px 0}.checks label{display:flex;gap:8px;align-items:center}.buttons{display:flex;flex-wrap:wrap;gap:10px}.btn{border:0;border-radius:10px;padding:10px 14px;font-weight:650;cursor:pointer;background:var(--accent);color:white}.btn.secondary{background:transparent;color:var(--text);border:1px solid var(--line)}.btn:disabled{opacity:.45;cursor:not-allowed}
+    #study{display:none}.study-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:12px}.progress{height:8px;background:var(--line);border-radius:999px;overflow:hidden}.progress>div{height:100%;background:var(--accent);width:0}.content{font-size:1.08rem}.content p{margin:.85rem 0}.content pre{white-space:pre-wrap;overflow:auto;border-left:4px solid var(--line);padding:10px 12px;background:color-mix(in srgb,var(--panel),var(--line) 18%);border-radius:8px}.gap{display:inline-block;min-width:3.2em;border-bottom:2px solid var(--accent);font-weight:700;letter-spacing:.08em;text-align:center}.gap-num{font-size:.7em;vertical-align:super;color:var(--accent);font-weight:700;margin-left:2px}.answers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:18px}.answer-row{display:grid;grid-template-columns:38px 1fr;gap:8px;align-items:center}.answer-row span{text-align:right;color:var(--muted)}.answer-row input.correct{border-color:var(--good);outline:2px solid color-mix(in srgb,var(--good),transparent 75%)}.answer-row input.wrong{border-color:var(--bad);outline:2px solid color-mix(in srgb,var(--bad),transparent 75%)}
+    .feedback{min-height:1.4em;margin-top:12px;font-weight:650}.good{color:var(--good)}.bad{color:var(--bad)}.nav{display:flex;justify-content:space-between;gap:10px;margin-top:18px}.hint{font-size:.9rem;color:var(--muted);margin-top:10px}.hidden{display:none!important}
+    @media(max-width:760px){.controls{grid-template-columns:1fr 1fr}.answers{grid-template-columns:1fr}.shell{padding:14px}.panel{padding:14px}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header class="top"><div><h1>Gap Study</h1><p>Turn long theory notes into short, focused recall exercises.</p></div></header>
+
+  <section id="setup" class="panel">
+    <textarea id="source" placeholder="Paste your notes here…"></textarea>
+    <div class="controls">
+      <div class="field"><label for="density">Gap density: <b id="densityVal">18%</b></label><input id="density" type="range" min="5" max="45" value="18"></div>
+      <div class="field"><label for="chunk">Words shown at once</label><input id="chunk" type="number" min="40" max="400" value="130"></div>
+      <div class="field"><label for="minLength">Minimum word length</label><input id="minLength" type="number" min="3" max="14" value="6"></div>
+      <div class="field"><label for="mode">Selection style</label><select id="mode"><option value="important">Prefer important words</option><option value="random">Mostly random content words</option><option value="every">Regular spacing</option></select></div>
+    </div>
+    <div class="checks">
+      <label><input id="partial" type="checkbox"> Partial gaps, e.g. <b>Qu____</b></label>
+      <label><input id="latex" type="checkbox" checked> Make gaps inside LaTeX</label>
+      <label><input id="headings" type="checkbox"> Allow gaps in headings</label>
+    </div>
+    <div class="buttons"><button class="btn" id="generate">Create exercise</button><button class="btn secondary" id="demo">Load short demo</button><button class="btn secondary" id="clear">Clear</button></div>
+    <p class="hint">The app avoids common grammar words and preserves diagram-like lines, ASCII art, arrows, and box drawings.</p>
+  </section>
+
+  <section id="study" class="panel">
+    <div class="study-head"><strong id="pageLabel">Part 1</strong><span id="scoreLabel"></span></div>
+    <div class="progress"><div id="bar"></div></div>
+    <article id="content" class="content"></article>
+    <div id="answers" class="answers"></div>
+    <div id="feedback" class="feedback"></div>
+    <div class="nav"><button class="btn secondary" id="backSetup">Edit text</button><div class="buttons"><button class="btn secondary" id="prev">Previous</button><button class="btn secondary" id="reveal">Reveal</button><button class="btn" id="check">Check</button><button class="btn" id="next">Next</button></div></div>
+  </section>
+</div>
+<script>
+const STOP = new Set(`a an the and or but if then than so because as at by for from in into of on onto over under through to up down with without about against between among during before after above below is am are was were be been being do does did doing have has had having can could may might must shall should will would not no nor yes this that these those it its itself they them their theirs themselves he him his himself she her hers herself we us our ours ourselves you your yours yourself yourselves i me my mine myself who whom whose which what when where why how all any both each few more most other some such only own same too very just also even still already almost again once here there therefore however moreover furthermore nevertheless although though while whereas whether either neither much many little less least enough every per via versus like unlike within across around out off since until unless despite towards toward upon regarding concerning including includes included means mean called common commonly usually often sometimes always never directly generally mainly especially conceptually normally initially finally later first second third one two three four five six seven eight nine ten`.split(/\s+/));
+const IMPORTANT = new Set(`vertex vertices primitive primitives fragment fragments pixel pixels rasterization clipping culling triangle triangles rendering pipeline geometry application framebuffer stencil depth projection matrix matrices interpolation coordinates coordinate camera screen gpu cpu shader texture normal model world view clip perspective transform transformation visibility visible invisible object objects buffer buffers`.split(/\s+/));
+const $=s=>document.querySelector(s); let pages=[],page=0,totalCorrect=0,totalAnswered=0;
+$('#density').oninput=e=>$('#densityVal').textContent=e.target.value+'%';
+$('#demo').onclick=()=>$('#source').value=`Theory Needed for Task 1: From Models to Pixels\n\nThe central question is: How does a computer transform a mathematical description of a 3D object into colored pixels on a screen?\n\n3D model\n→ transformed geometry\n→ screen fragments\n→ final pixel values\n\nA vertex passes through several coordinate systems:\nlocal space → world space → view space → clip space\n\n\\[p_{\\text{clip}} = PVMp_{\\text{local}}\\]\n\nRasterization converts geometric primitives into fragments. A triangle may have only three vertices but cover thousands of pixels.`;
+$('#clear').onclick=()=>$('#source').value='';
+$('#backSetup').onclick=()=>{$('#study').style.display='none';$('#setup').style.display='block'};
+
+function isDiagramLine(line){
+  const s=line.trim(); if(!s) return false;
+  if(/[┌┐└┘─│▲▼●■□╔╗╚╝═║]/.test(s)) return true;
+  if((s.match(/[→↓↑←↔]/g)||[]).length>=1 && s.split(/\s+/).length<=8) return true;
+  const letters=(s.match(/[A-Za-zÀ-ž]/g)||[]).length, symbols=(s.match(/[^A-Za-zÀ-ž0-9\s]/g)||[]).length;
+  if(s.length>4 && symbols>letters*1.25) return true;
+  if(/^\s{2,}\S/.test(line) && /[\\/|_\-]/.test(s)) return true;
+  return false;
+}
+function protectSegments(text){
+  const seg=[]; let i=0, start=0;
+  const patterns=[/```[\s\S]*?```/g,/\\\[[\s\S]*?\\\]/g,/\\\([\s\S]*?\\\)/g,/\$\$[\s\S]*?\$\$/g,/\$[^\n$]+\$/g];
+  const matches=[]; patterns.forEach(r=>{let m;while((m=r.exec(text)))matches.push({a:m.index,b:m.index+m[0].length,t:m[0],latex:!m[0].startsWith('```')})});
+  matches.sort((x,y)=>x.a-y.a); const clean=[]; let end=-1; for(const m of matches){if(m.a>=end){clean.push(m);end=m.b}}
+  clean.forEach(m=>{if(m.a>start)seg.push({type:'text',text:text.slice(start,m.a)});seg.push({type:m.latex?'latex':'diagram',text:m.t});start=m.b});
+  if(start<text.length)seg.push({type:'text',text:text.slice(start)}); return seg;
+}
+function splitIntoPages(text,maxWords){
+  const blocks=text.split(/\n{2,}/); const result=[]; let cur=[],count=0;
+  for(const b of blocks){const n=(b.match(/\b[\p{L}\p{N}_'-]+\b/gu)||[]).length||1;if(cur.length&&count+n>maxWords){result.push(cur.join('\n\n'));cur=[];count=0}cur.push(b);count+=n}if(cur.length)result.push(cur.join('\n\n'));return result;
+}
+function candidate(word,heading=false){const low=word.toLowerCase();return word.length>=+$('#minLength').value&&!STOP.has(low)&&!/^[0-9]+$/.test(word)&&(!heading||$('#headings').checked)}
+function partialMask(w){const keep=Math.max(1,Math.min(3,Math.floor(w.length*.35)));return w.slice(0,keep)+'_'.repeat(Math.max(3,w.length-keep))}
+function choose(words){
+  const density=+$('#density').value/100, mode=$('#mode').value; let eligible=words.filter(x=>x.ok); let target=Math.max(1,Math.round(eligible.length*density));
+  if(mode==='important') eligible.sort((a,b)=>(IMPORTANT.has(b.low)?2:0)+(b.word.length/20)-((IMPORTANT.has(a.low)?2:0)+(a.word.length/20))+Math.random()*.3);
+  else if(mode==='random') eligible.sort(()=>Math.random()-.5);
+  else {const step=Math.max(1,Math.floor(eligible.length/target));eligible=eligible.filter((_,i)=>i%step===0)}
+  return new Set(eligible.slice(0,target).map(x=>x.id));
+}
+function latexGap(raw,state){
+  if(!$('#latex').checked) return escapeHtml(raw);
+  const delim=raw.startsWith('\\[')?['\\[','\\]']:raw.startsWith('\\(')?['\\(','\\)']:raw.startsWith('$$')?['$$','$$']:['$','$'];
+  let body=raw.slice(delim[0].length,raw.length-delim[1].length), id=0;
+  const toks=[]; body.replace(/\\text\{([^{}]+)\}|[A-Za-z][A-Za-z0-9_]*/g,(m,inner,off)=>{const w=inner||m.replace(/^\\text\{|\}$/g,'');if(candidate(w)){toks.push({m,w,off,id:id++})}});
+  if(!toks.length)return escapeHtml(raw);
+  const selected=choose(toks.map(t=>({id:t.id,word:t.w,low:t.w.toLowerCase(),ok:true}))); let out='',pos=0;
+  toks.forEach(t=>{out+=body.slice(pos,t.off);if(selected.has(t.id)){const n=state.gaps.length+1;state.gaps.push({answer:t.w,num:n});const visible=$('#partial').checked?t.w.slice(0,Math.max(1,Math.min(2,Math.floor(t.w.length*.3)))):'';out+=`\\underbrace{\\text{${visible}}\\hspace{${Math.max(1.4,t.w.length*.28)}em}}_{\\text{${n}}}`;}else out+=t.m;pos=t.off+t.m.length});out+=body.slice(pos);return escapeHtml(delim[0]+out+delim[1]);
+}
+function escapeHtml(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function renderPage(raw){
+  const state={gaps:[]}; let html=''; const lines=raw.split('\n'); let paragraph=[];
+  function flush(){if(!paragraph.length)return;let txt=paragraph.join('\n'), heading=/^#{1,6}\s|^[0-9]+\.\s+[^.]{0,80}$/.test(txt.trim());const segments=protectSegments(txt);let wordId=0,wordObjs=[];
+    segments.forEach(s=>{if(s.type==='text')s.text.replace(/[\p{L}][\p{L}\p{N}_'-]*/gu,w=>{wordObjs.push({id:wordId++,word:w,low:w.toLowerCase(),ok:candidate(w,heading)});return w})}); const selected=choose(wordObjs);wordId=0;let ph='';
+    segments.forEach(s=>{if(s.type==='latex'){ph+=latexGap(s.text,state);return}if(s.type==='diagram'){ph+=`<pre>${escapeHtml(s.text.replace(/^```[^\n]*\n?|```$/g,''))}</pre>`;return}ph+=escapeHtml(s.text).replace(/[\p{L}][\p{L}\p{N}_'-]*/gu,w=>{const id=wordId++;if(!selected.has(id))return w;const n=state.gaps.length+1;state.gaps.push({answer:w,num:n});const mask=$('#partial').checked?partialMask(w):'_'.repeat(Math.min(12,Math.max(4,w.length)));return `<span class="gap">${mask}</span><sup class="gap-num">${n}</sup>`})}); html+=heading?`<h3>${ph}</h3>`:`<p>${ph.replace(/\n/g,'<br>')}</p>`;paragraph=[]}
+  for(const line of lines){if(isDiagramLine(line)){flush();html+=`<pre>${escapeHtml(line)}</pre>`}else paragraph.push(line)}flush();return {html,gaps:state.gaps};
+}
+function start(){const text=$('#source').value.trim();if(!text){alert('Paste some text first.');return}pages=splitIntoPages(text,+$('#chunk').value).map(renderPage);page=0;totalCorrect=0;totalAnswered=0;$('#setup').style.display='none';$('#study').style.display='block';show()}
+function show(){const p=pages[page];$('#content').innerHTML=p.html;$('#answers').innerHTML=p.gaps.map(g=>`<label class="answer-row"><span>${g.num}.</span><input type="text" data-answer="${escapeHtml(g.answer)}" autocomplete="off" spellcheck="false"></label>`).join('');$('#pageLabel').textContent=`Part ${page+1} of ${pages.length}`;$('#bar').style.width=((page+1)/pages.length*100)+'%';$('#feedback').textContent='';$('#scoreLabel').textContent=totalAnswered?`${totalCorrect}/${totalAnswered} correct`:'';$('#prev').disabled=page===0;$('#next').textContent=page===pages.length-1?'Finish':'Next';setTimeout(()=>{if(window.renderMathInElement)renderMathInElement($('#content'),{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false}],throwOnError:false})},0)}
+function norm(s){return s.trim().toLocaleLowerCase().replace(/[’]/g,"'").normalize('NFKD').replace(/\p{M}/gu,'')}
+$('#generate').onclick=start;$('#prev').onclick=()=>{if(page>0){page--;show()}};$('#next').onclick=()=>{if(page<pages.length-1){page++;show()}else{$('#feedback').innerHTML=`<span class="good">Finished. Overall checked score: ${totalCorrect}/${totalAnswered || 0}.</span>`}};
+$('#check').onclick=()=>{let c=0,n=0;document.querySelectorAll('#answers input').forEach(inp=>{n++;const ok=norm(inp.value)===norm(inp.dataset.answer);inp.classList.toggle('correct',ok);inp.classList.toggle('wrong',!ok);if(ok)c++});totalCorrect+=c;totalAnswered+=n;$('#feedback').innerHTML=c===n?`<span class="good">All ${n} correct.</span>`:`<span class="bad">${c} of ${n} correct. Incorrect fields are marked.</span>`;$('#scoreLabel').textContent=`${totalCorrect}/${totalAnswered} correct`};
+$('#reveal').onclick=()=>{document.querySelectorAll('#answers input').forEach(inp=>{inp.value=inp.dataset.answer;inp.classList.remove('wrong');inp.classList.add('correct')});$('#feedback').textContent='Answers revealed.'};
+</script>
+</body>
+</html>
