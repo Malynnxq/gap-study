@@ -1,0 +1,58 @@
+name: Save settings and shrink solved gaps
+on:
+  push:
+    paths:
+      - '.github/workflows/save-settings-and-shrink-solved-gaps.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch compressed site
+        shell: python
+        run: |
+          import base64, gzip, re
+          from pathlib import Path
+
+          path = Path('index.html')
+          loader = path.read_text()
+          match = re.search(r"const b='([^']+)'", loader)
+          if not match:
+              raise SystemExit('Compressed site payload not found')
+
+          html = gzip.decompress(base64.b64decode(match.group(1))).decode()
+
+          old = "if(ok&&gap){gap.textContent=input.dataset.answer;gap.classList.add('solved');gap.removeAttribute('role');gap.removeAttribute('tabindex')}"
+          new = "if(ok&&gap){gap.textContent=input.dataset.answer;gap.classList.add('solved');gap.style.width='auto';gap.style.minWidth='0';gap.removeAttribute('role');gap.removeAttribute('tabindex')}"
+          if old not in html:
+              raise SystemExit('Solved-gap target not found')
+          html = html.replace(old, new, 1)
+
+          key_anchor = "const CUSTOM_IMPORTANT_KEY='gapStudyCustomImportantV1';"
+          settings_code = """const SETTINGS_KEY='gapStudySettingsV1';
+function saveSettings(){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify({density:$('#density').value,chunk:$('#chunk').value,minLength:$('#minLength').value,mode:$('#mode').value,partial:$('#partial').checked,latex:$('#latex').checked,headings:$('#headings').checked}))}catch{}}
+function restoreSettings(){try{const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'null');if(!s)return;if(s.density!=null)$('#density').value=s.density;if(s.chunk!=null)$('#chunk').value=s.chunk;if(s.minLength!=null)$('#minLength').value=s.minLength;if(s.mode!=null)$('#mode').value=s.mode;if(s.partial!=null)$('#partial').checked=!!s.partial;if(s.latex!=null)$('#latex').checked=!!s.latex;if(s.headings!=null)$('#headings').checked=!!s.headings;$('#densityVal').textContent=$('#density').value+'%'}catch{}}
+"""
+          if 'gapStudySettingsV1' not in html:
+              if key_anchor not in html:
+                  raise SystemExit('Settings anchor not found')
+              html = html.replace(key_anchor, key_anchor+'\n'+settings_code, 1)
+
+          density_old = "$('#density').oninput=e=>$('#densityVal').textContent=e.target.value+'%';"
+          density_new = "$('#density').oninput=e=>{$('#densityVal').textContent=e.target.value+'%';saveSettings()};['chunk','minLength'].forEach(id=>$('#'+id).addEventListener('input',saveSettings));['mode','partial','latex','headings'].forEach(id=>$('#'+id).addEventListener('change',saveSettings));restoreSettings();"
+          if density_old in html:
+              html = html.replace(density_old, density_new, 1)
+          elif 'restoreSettings();' not in html:
+              raise SystemExit('Density handler target not found')
+
+          payload = base64.b64encode(gzip.compress(html.encode(), 9)).decode()
+          path.write_text(loader[:match.start(1)] + payload + loader[match.end(1):])
+      - name: Commit changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git diff --cached --quiet || git commit -m "Persist exercise settings and shrink solved gaps"
+          git push
