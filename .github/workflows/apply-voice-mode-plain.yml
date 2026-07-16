@@ -1,0 +1,75 @@
+name: Apply eyes-free voice mode
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-voice-mode-plain.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: voice-mode
+      - name: Patch voice-mode branch
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+
+          s=s.replace("body.replace(/\\\\text\\{([^{}]+)\\}|[A-Za-z][A-Za-z0-9_]*/g,(m,inner,off)=>{const w=inner||m.replace(/^\\\\text\\{|\\}$/g,'');if(candidate(w)){toks.push({m,w,off,id:id++})}});", "body.replace(/\\\\text\\{([^{}]+)\\}|[A-Za-z][A-Za-z0-9_]*/g,(m,inner,off)=>{if(!inner&&body[off-1]==='\\\\')return m;const w=inner||m.replace(/^\\\\text\\{|\\}$/g,'');if(candidate(w)){toks.push({m,w,off,id:id++})}return m});")
+
+          css='''
+              .voice-overlay{position:fixed;inset:0;z-index:100;background:var(--bg);color:var(--text);display:none;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:max(24px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
+              .voice-overlay.open{display:flex}.voice-orb{width:132px;height:132px;border-radius:50%;background:color-mix(in srgb,var(--accent),transparent 78%);border:3px solid var(--accent);display:grid;place-items:center;font-size:3rem;margin-bottom:24px;box-shadow:0 0 0 0 color-mix(in srgb,var(--accent),transparent 65%)}
+              .voice-overlay.listening .voice-orb{animation:voicePulse 1.15s infinite}.voice-overlay.speaking .voice-orb{animation:voiceGlow 1.5s infinite alternate}.voice-status{font-size:clamp(1.35rem,6vw,2.2rem);font-weight:750;max-width:650px}.voice-detail{margin-top:10px;color:var(--muted);font-size:1rem}.voice-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:min(100%,520px);margin-top:32px}.voice-controls .btn{min-height:56px}.voice-language{margin-top:18px;min-height:46px;font-size:16px;width:min(100%,320px)}
+              @keyframes voicePulse{50%{transform:scale(1.07);box-shadow:0 0 0 22px transparent}}@keyframes voiceGlow{to{transform:scale(1.04);filter:brightness(1.25)}}
+              @media(max-width:390px){.voice-controls{grid-template-columns:1fr}.voice-orb{width:112px;height:112px}}
+          '''
+          s=s.replace('  </style>',css+'  </style>',1)
+          s=s.replace('<button class="btn" id="next">Next</button>','<button class="btn secondary" id="voiceStart">Eyes-free</button><button class="btn" id="next">Next</button>',1)
+
+          overlay='''
+            <section id="voiceOverlay" class="voice-overlay" aria-live="assertive">
+              <div class="voice-orb" aria-hidden="true">◉</div>
+              <div id="voiceStatus" class="voice-status">Voice mode ready</div>
+              <div id="voiceDetail" class="voice-detail">The page will read until a gap, then listen for your answer.</div>
+              <select id="voiceLanguage" class="voice-language" aria-label="Voice language">
+                <option value="en-US">English</option><option value="de-DE">Deutsch</option><option value="uk-UA">Українська</option><option value="ru-RU">Русский</option>
+              </select>
+              <div class="voice-controls"><button class="btn secondary" id="voiceRepeat">Repeat</button><button class="btn secondary" id="voiceSkip">Skip</button><button class="btn" id="voiceStop">Stop</button></div>
+            </section>
+          '''
+          s=s.replace('<script>',overlay+'<script>',1)
+
+          js=r'''
+          const VoiceRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+          let voiceRunning=false,voiceQueue=[],voiceCursor=0,voiceRecognition=null,voiceCurrentGap=null,voiceLastContext='';
+          const voiceOverlay=()=>$('#voiceOverlay');
+          function voiceSetStatus(text,state=''){const o=voiceOverlay();o.classList.remove('listening','speaking');if(state)o.classList.add(state);$('#voiceStatus').textContent=text}
+          function voiceSpeak(text,done){if(!voiceRunning)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=$('#voiceLanguage').value;u.rate=.92;u.onstart=()=>voiceSetStatus(text,'speaking');u.onend=()=>{if(voiceRunning&&done)done()};u.onerror=()=>{if(voiceRunning&&done)done()};speechSynthesis.speak(u)}
+          function voiceFlushText(buf,q){const text=buf.join(' ').replace(/\s+/g,' ').trim();if(text)q.push({type:'text',text});buf.length=0}
+          function buildVoiceQueue(){const q=[],buf=[];function walk(node){if(node.nodeType===Node.TEXT_NODE){buf.push(node.nodeValue);return}if(node.nodeType!==Node.ELEMENT_NODE)return;const el=node;if(el.classList.contains('gap-num')||el.classList.contains('katex-mathml'))return;if(el.classList.contains('gap')&&el.dataset.gap){voiceFlushText(buf,q);q.push({type:'gap',num:el.dataset.gap});return}if(el.classList.contains('latex-gap-group')){voiceFlushText(buf,q);q.push({type:'text',text:'Formula.'});(el.dataset.gapIds||'').split(',').filter(Boolean).forEach(num=>q.push({type:'gap',num}));return}if(['P','LI','H1','H2','H3','H4','BLOCKQUOTE','PRE','HR','BR'].includes(el.tagName))buf.push('. ');[...el.childNodes].forEach(walk);if(['P','LI','H1','H2','H3','H4','BLOCKQUOTE','PRE'].includes(el.tagName))buf.push('. ')}walk($('#content'));voiceFlushText(buf,q);return q}
+          function voiceMarkCorrect(input){const num=input.dataset.gap;input.value=input.dataset.answer;input.classList.add('correct');input.classList.remove('wrong');const gap=document.getElementById(`gap-${num}`);if(gap){gap.textContent=input.dataset.answer;gap.classList.add('solved');gap.removeAttribute('role');gap.removeAttribute('tabindex')}}
+          function voiceRevealCurrent(){if(!voiceCurrentGap)return;const input=document.querySelector(`#answer-row-${voiceCurrentGap} input`);if(!input)return;voiceMarkCorrect(input);const answer=input.dataset.answer;voiceCurrentGap=null;voiceSpeak(`The answer is ${answer}.`,()=>voiceNext())}
+          function voiceListen(){if(!voiceRunning)return;if(!VoiceRecognition){voiceSetStatus('Speech recognition is unavailable in this browser.');$('#voiceDetail').textContent='Speech playback works, but this browser cannot listen automatically.';return}const input=document.querySelector(`#answer-row-${voiceCurrentGap} input`);if(!input){voiceNext();return}voiceRecognition?.abort();const r=new VoiceRecognition();voiceRecognition=r;r.lang=$('#voiceLanguage').value;r.interimResults=false;r.continuous=false;r.maxAlternatives=3;r.onstart=()=>voiceSetStatus('Listening…','listening');r.onresult=e=>{const heard=[...e.results[0]].map(x=>x.transcript.trim());const command=norm(heard[0]||'');if(['stop','pause','stopp','anhalten','зупинись','стоп'].includes(command)){stopVoiceMode();return}if(['repeat','again','wiederholen','ще раз','повтори','повтори еще раз'].includes(command)){voiceRepeatCurrent();return}if(['skip','reveal','überspringen','пропусти','пропустить'].includes(command)){voiceRevealCurrent();return}const ok=heard.some(x=>norm(x)===norm(input.dataset.answer)||norm(x).split(/\s+/).includes(norm(input.dataset.answer)));if(ok){voiceMarkCorrect(input);voiceCurrentGap=null;voiceSpeak('Correct.',()=>voiceNext())}else{input.classList.add('wrong');voiceSpeak('Not quite. Try again.',()=>voiceListen())}};r.onerror=e=>{if(!voiceRunning)return;if(e.error==='not-allowed'){voiceSetStatus('Microphone permission was denied.');return}voiceSpeak("I didn't hear that. Try again.",()=>voiceListen())};try{r.start()}catch{setTimeout(voiceListen,300)}}
+          function voicePromptGap(num){voiceCurrentGap=String(num);const input=document.querySelector(`#answer-row-${num} input`);if(!input){voiceNext();return}voiceSpeak(`Gap ${num}. Say the missing word.`,()=>voiceListen())}
+          function voiceNext(){if(!voiceRunning)return;if(voiceCursor>=voiceQueue.length){if(page<pages.length-1){page++;show();setTimeout(()=>{voiceQueue=buildVoiceQueue();voiceCursor=0;voiceNext()},650)}else{voiceSpeak('Exercise finished.',()=>stopVoiceMode())}return}const item=voiceQueue[voiceCursor++];if(item.type==='text'){voiceLastContext=item.text;voiceSpeak(item.text,voiceNext)}else voicePromptGap(item.num)}
+          function startVoiceMode(){if(!('speechSynthesis'in window)){alert('Speech playback is unavailable in this browser.');return}voiceRunning=true;voiceOverlay().classList.add('open');$('#voiceDetail').textContent=VoiceRecognition?'Say the answer. You can also say repeat, skip, or stop.':'Listening is unavailable; use the visible controls.';voiceQueue=buildVoiceQueue();voiceCursor=0;voiceCurrentGap=null;voiceNext()}
+          function stopVoiceMode(){voiceRunning=false;speechSynthesis.cancel();try{voiceRecognition?.abort()}catch{}voiceOverlay().classList.remove('open','listening','speaking');voiceCurrentGap=null}
+          function voiceRepeatCurrent(){if(!voiceRunning)return;if(voiceCurrentGap){const num=voiceCurrentGap;const text=voiceLastContext?`${voiceLastContext} Gap ${num}. Say the missing word.`:`Gap ${num}. Say the missing word.`;voiceSpeak(text,voiceListen)}else if(voiceLastContext)voiceSpeak(voiceLastContext,voiceNext)}
+          $('#voiceStart').onclick=startVoiceMode;$('#voiceStop').onclick=stopVoiceMode;$('#voiceRepeat').onclick=voiceRepeatCurrent;$('#voiceSkip').onclick=voiceRevealCurrent;
+          document.addEventListener('visibilitychange',()=>{if(document.hidden&&voiceRunning)stopVoiceMode()});
+          '''
+          i=s.rfind('</script>')
+          s=s[:i]+js+s[i:]
+          p.write_text(s)
+      - name: Commit prototype
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git diff --cached --quiet || git commit -m "Implement eyes-free voice prototype"
+          git push origin HEAD:voice-mode
