@@ -1,0 +1,63 @@
+name: Add context around voice gaps
+on:
+  push:
+    paths:
+      - '.github/workflows/add-context-around-gap.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Improve spoken gap prompts
+        shell: python
+        run: |
+          import re
+          from pathlib import Path
+          p=Path('voice.html')
+          s=p.read_text()
+
+          old_build=re.compile(r"function build\(text\)\{.*?\}\nfunction chunks",re.S)
+          new_build=r'''function cleanSpeechText(s){return s.replace(/[`*_#>~-]+/g,' ').replace(/\s+/g,' ').trim()}
+function sentenceStart(text,index){const left=text.slice(0,index);const m=[...left.matchAll(/[.!?]\s+/g)].pop();return m?m.index+m[0].length:0}
+function sentenceEnd(text,index){const right=text.slice(index);const m=right.match(/[.!?](?:\s|$)/);return m?index+m.index+1:text.length}
+function build(text){
+  const words=[...text.matchAll(/[\p{L}][\p{L}\p{N}'-]*/gu)];
+  const eligible=words.filter(m=>m[0].length>=4&&!STOP.has(m[0].toLowerCase()));
+  const count=Math.max(1,Math.round(eligible.length*(+$('#density').value/100)));
+  const chosen=new Set([...eligible].sort(()=>Math.random()-.5).slice(0,count).map(m=>m.index));
+  const out=[];
+  for(const m of words){
+    if(!chosen.has(m.index))continue;
+    const start=sentenceStart(text,m.index),end=sentenceEnd(text,m.index+m[0].length);
+    const before=cleanSpeechText(text.slice(start,m.index));
+    const after=cleanSpeechText(text.slice(m.index+m[0].length,end));
+    out.push({type:'gap',answer:m[0],before,after});
+  }
+  return out;
+}
+function chunks'''
+          s,n=old_build.subn(new_build,s)
+          if n!=1: raise SystemExit(f'build replacement count {n}')
+
+          s=s.replace(
+            "function nextItem(){if(!running)return;if(cursor>=items.length){speak('Exercise finished.',stop);return}const x=items[cursor++];if(x.type==='text'){lastContext=x.text;speak(x.text,nextItem)}else{current=x;speak('Missing word.',()=>setTimeout(listen,450))}}",
+            "function speakGapPrompt(x){current=x;lastContext=[x.before,x.after].filter(Boolean).join(' … ');const beforeDone=()=>setTimeout(()=>speak('blank',()=>setTimeout(()=>{const afterDone=()=>setTimeout(()=>speak('What is the missing word?',()=>setTimeout(listen,650)),850);if(x.after)speak(x.after,afterDone);else afterDone()},650)),550);if(x.before)speak(x.before,beforeDone);else beforeDone()}\nfunction nextItem(){if(!running)return;if(cursor>=items.length){speak('Exercise finished.',stop);return}speakGapPrompt(items[cursor++])}"
+          )
+          s=s.replace(
+            "function repeat(){if(!running)return;if(current)speak((lastContext?lastContext+'. ':'')+'Missing word.',()=>setTimeout(listen,450));else if(lastContext)speak(lastContext,nextItem)}",
+            "function repeat(){if(!running)return;if(current)speakGapPrompt(current)}"
+          )
+          s=s.replace(
+            "function reveal(){if(!current)return;const a=current.answer;current=null;speak('The answer is '+a+'.',()=>setTimeout(nextItem,300))}",
+            "function reveal(){if(!current)return;const a=current.answer;current=null;speak('The answer is '+a+'.',()=>setTimeout(nextItem,500))}"
+          )
+          p.write_text(s)
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add voice.html
+          git diff --cached --quiet || git commit -m "Read context before and after each voice gap"
+          git push
