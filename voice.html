@@ -21,7 +21,7 @@
 <script>
 const $=s=>document.querySelector(s),HISTORY_KEY='gapStudyHistoryV1',VOICE_KEY='gapStudyVoiceNaturalV1';
 const STOP=new Set(`a an the and or but if then than so because as at by for from in into of on onto over under through to up down with without about is am are was were be been being do does did have has had can could may might must shall should will would not no nor this that these those it its they them their he him his she her we us our you your i me my who which what when where why how all any both each more most other some such only same too very just also`.split(/\s+/));
-let voices=[],running=false,items=[],cursor=0,current=null,lastContext='',recognition=null;
+let voices=[],running=false,items=[],cursor=0,current=null,recognition=null;
 function history(){try{return JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]')}catch{return[]}}
 function loadHistory(){const h=history();$('#history').innerHTML='<option value="">Choose saved text…</option>'+h.map(x=>`<option value="${x.id}">${escape(x.title)}</option>`).join('')}
 function escape(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -33,47 +33,18 @@ speechSynthesis.onvoiceschanged=loadVoices;$('#language').onchange=loadVoices;$(
 function chosenVoice(){const selected=$('#voice').value;if(selected)return voices.find(v=>v.name===selected)||null;const lang=$('#language').value.slice(0,2).toLowerCase(),c=voices.filter(v=>v.lang.toLowerCase().startsWith(lang));const better=/premium|enhanced|natural|neural|samantha|ava|serena|daniel|anna|petra|milena|kateryna|yuri/i;return c.find(v=>better.test(v.name))||c.find(v=>v.default)||c[0]||null}
 function normalize(s){return s.toLowerCase().normalize('NFKD').replace(/\p{M}/gu,'').replace(/[^\p{L}\p{N}'-]+/gu,' ').trim()}
 function cleanSpeechText(s){return s.replace(/[`*_#>~-]+/g,' ').replace(/\s+/g,' ').trim()}
-function sentenceStart(text,index){const left=text.slice(0,index);const matches=[...left.matchAll(/[.!?]\s+/g)];const m=matches[matches.length-1];return m?m.index+m[0].length:0}
-function sentenceEnd(text,index){const right=text.slice(index);const m=right.match(/[.!?](?:\s|$)/);return m?index+m.index+1:text.length}
-function build(text){const words=[...text.matchAll(/[\p{L}][\p{L}\p{N}'-]*/gu)],eligible=words.filter(m=>m[0].length>=4&&!STOP.has(m[0].toLowerCase())),count=Math.max(1,Math.round(eligible.length*(+$('#density').value/100))),chosen=new Set([...eligible].sort(()=>Math.random()-.5).slice(0,count).map(m=>m.index)),out=[];for(const m of words){if(!chosen.has(m.index))continue;const start=sentenceStart(text,m.index),end=sentenceEnd(text,m.index+m[0].length);out.push({type:'gap',answer:m[0],before:cleanSpeechText(text.slice(start,m.index)),after:cleanSpeechText(text.slice(m.index+m[0].length,end))})}return out}
-function chunks(text){
-  const clean=text.replace(/\s+/g,' ').trim();
-  if(!clean)return[];
-  const sentences=clean.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[clean];
-  const out=[];
-  for(const sentence of sentences){
-    const words=sentence.trim().split(/\s+/);
-    if(words.length<=28){out.push(sentence.trim());continue}
-    for(let i=0;i<words.length;i+=24)out.push(words.slice(i,i+24).join(' '));
-  }
-  return out;
-}
+function sentenceStart(text,index){const left=text.slice(0,index),matches=[...left.matchAll(/[.!?]\s+/g)],m=matches[matches.length-1];return m?m.index+m[0].length:0}
+function sentenceEnd(text,index){const right=text.slice(index),m=right.match(/[.!?](?:\s|$)/);return m?index+m.index+1:text.length}
+function build(text){const words=[...text.matchAll(/[\p{L}][\p{L}\p{N}'-]*/gu)],eligible=words.filter(m=>m[0].length>=4&&!STOP.has(m[0].toLowerCase())),count=Math.max(1,Math.round(eligible.length*(+$('#density').value/100))),chosen=new Set([...eligible].sort(()=>Math.random()-.5).slice(0,count).map(m=>m.index)),out=[];for(const m of words){if(!chosen.has(m.index))continue;const start=sentenceStart(text,m.index),end=sentenceEnd(text,m.index+m[0].length);out.push({answer:m[0],before:cleanSpeechText(text.slice(start,m.index)),after:cleanSpeechText(text.slice(m.index+m[0].length,end))})}return out}
+function chunks(text){const clean=text.replace(/\s+/g,' ').trim();if(!clean)return[];const sentences=clean.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[clean],out=[];for(const sentence of sentences){const words=sentence.trim().split(/\s+/);if(words.length<=28){out.push(sentence.trim());continue}for(let i=0;i<words.length;i+=24)out.push(words.slice(i,i+24).join(' '))}return out}
 function setState(text,kind=''){const s=$('#state');s.className=kind;$('#status').textContent=text}
-function speak(text,done){
-  if(!running)return;
-  speechSynthesis.cancel();
-  const list=chunks(text);let i=0;
-  const next=()=>{
-    if(!running)return;
-    if(i>=list.length){done?.();return}
-    const c=list[i++],u=new SpeechSynthesisUtterance(c);
-    u.lang=$('#language').value;
-    u.rate=+$('#speed').value;
-    u.pitch=1;
-    const v=chosenVoice();if(v)u.voice=v;
-    u.onstart=()=>setState(c,'speaking');
-    u.onend=()=>setTimeout(next,70);
-    u.onerror=()=>setTimeout(next,100);
-    speechSynthesis.speak(u);
-  };
-  next();
-}
-function listen(){if(!running)return;const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R){setState('Speech recognition unavailable');$('#detail').textContent='This browser can read aloud but cannot listen automatically.';return}recognition?.abort();const r=new R();recognition=r;r.lang=$('#language').value;r.interimResults=false;r.maxAlternatives=4;r.onstart=()=>setState('Listening…','listening');r.onresult=e=>{const heard=[...e.results[0]].map(x=>x.transcript),cmd=normalize(heard[0]||'');if(['stop','pause','stopp','anhalten','стоп','зупинись'].includes(cmd)){stop();return}if(['repeat','again','wiederholen','повтори','ще раз'].includes(cmd)){repeat();return}if(['skip','reveal','überspringen','пропусти','пропустить'].includes(cmd)){reveal();return}const answer=normalize(current.answer),ok=heard.some(x=>normalize(x)===answer||normalize(x).split(' ').includes(answer));if(ok){current=null;speak('Correct.',()=>setTimeout(nextItem,220))}else speak('Not quite. Try again.',()=>setTimeout(listen,350))};r.onerror=e=>{if(!running)return;if(e.error==='not-allowed'){setState('Microphone permission denied');return}speak("I didn't hear that.",()=>setTimeout(listen,350))};try{r.start()}catch{setTimeout(listen,250)}}
-function speakGapPrompt(x){current=x;lastContext=[x.before,x.after].filter(Boolean).join(' … ');const beforeDone=()=>setTimeout(()=>speak('blank',()=>setTimeout(()=>{const afterDone=()=>setTimeout(()=>speak('What is the missing word?',()=>setTimeout(listen,650)),850);if(x.after)speak(x.after,afterDone);else afterDone()},650)),550);if(x.before)speak(x.before,beforeDone);else beforeDone()}
+function speak(text,done){if(!running)return;speechSynthesis.cancel();const list=chunks(text);let i=0;const next=()=>{if(!running)return;if(i>=list.length){done?.();return}const c=list[i++],u=new SpeechSynthesisUtterance(c);u.lang=$('#language').value;u.rate=+$('#speed').value;u.pitch=1;const v=chosenVoice();if(v)u.voice=v;u.onstart=()=>setState(c,'speaking');u.onend=()=>setTimeout(next,70);u.onerror=()=>setTimeout(next,100);speechSynthesis.speak(u)};next()}
+function listen(){if(!running)return;const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R){setState('Speech recognition unavailable');$('#detail').textContent='This browser can read aloud but cannot listen automatically.';return}recognition?.abort();const r=new R();recognition=r;r.lang=$('#language').value;r.interimResults=false;r.maxAlternatives=4;r.onstart=()=>setState('Listening…','listening');r.onresult=e=>{const heard=[...e.results[0]].map(x=>x.transcript),cmd=normalize(heard[0]||'');if(['stop','pause','stopp','anhalten','стоп','зупинись'].includes(cmd)){stop();return}if(['repeat','again','wiederholen','повтори','ще раз'].includes(cmd)){repeat();return}if(['skip','reveal','überspringen','пропусти','пропустить'].includes(cmd)){reveal();return}const answer=normalize(current.answer),ok=heard.some(x=>normalize(x)===answer||normalize(x).split(' ').includes(answer));if(ok){current=null;speak('Correct.',()=>setTimeout(nextItem,300))}else speak('Not quite. Try again.',()=>setTimeout(listen,450))};r.onerror=e=>{if(!running)return;if(e.error==='not-allowed'){setState('Microphone permission denied');return}speak("I didn't hear that.",()=>setTimeout(listen,400))};try{r.start()}catch{setTimeout(listen,250)}}
+function speakGapPrompt(x){current=x;const afterBefore=()=>setTimeout(()=>speak('blank',afterBlank),600);const afterBlank=()=>setTimeout(()=>{if(x.after)speak(x.after,afterContext);else afterContext()},700);const afterContext=()=>setTimeout(()=>speak('What is the missing word?',()=>setTimeout(listen,700)),950);if(x.before)speak(x.before,afterBefore);else afterBefore()}
 function nextItem(){if(!running)return;if(cursor>=items.length){speak('Exercise finished.',stop);return}speakGapPrompt(items[cursor++])}
-function repeat(){if(!running)return;if(current)speakGapPrompt(current)}
-function reveal(){if(!current)return;const a=current.answer;current=null;speak('The answer is '+a+'.',()=>setTimeout(nextItem,300))}
-function start(){const text=$('#text').value.trim();if(!text)return alert('Choose or paste a text first.');items=build(text);cursor=0;current=null;lastContext='';running=true;$('#setup').classList.add('hidden');$('#session').classList.remove('hidden');$('#detail').textContent='Say the missing word. You can also say repeat, skip, or stop.';speak('Eyes free session started.',nextItem)}
+function repeat(){if(!running||!current)return;speakGapPrompt(current)}
+function reveal(){if(!current)return;const a=current.answer;current=null;speak('The answer is '+a+'.',()=>setTimeout(nextItem,500))}
+function start(){const text=$('#text').value.trim();if(!text)return alert('Choose or paste a text first.');items=build(text);cursor=0;current=null;running=true;$('#setup').classList.add('hidden');$('#session').classList.remove('hidden');$('#detail').textContent='You will hear the complete sentence around each blank. Say repeat, skip, or stop at any time.';speak('Eyes free session started.',nextItem)}
 function stop(){running=false;speechSynthesis.cancel();try{recognition?.abort()}catch{}$('#session').classList.add('hidden');$('#setup').classList.remove('hidden');setState('Stopped')}
 $('#start').onclick=start;$('#repeat').onclick=repeat;$('#skip').onclick=reveal;$('#stop').onclick=stop;
 </script></body></html>
