@@ -1,0 +1,57 @@
+name: Persist settings v2
+on:
+  push:
+    paths:
+      - '.github/workflows/persist-settings-v2.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply robust patch
+        shell: python
+        run: |
+          import base64, gzip, re
+          from pathlib import Path
+
+          p=Path('index.html')
+          loader=p.read_text()
+          m=re.search(r"const b='([^']+)'",loader)
+          if not m: raise SystemExit('payload missing')
+          html=gzip.decompress(base64.b64decode(m.group(1))).decode()
+
+          # A solved word must stop occupying the former blank width.
+          html,n=re.subn(
+            r"(if\(ok&&gap\)\{gap\.textContent=input\.dataset\.answer;gap\.classList\.add\('solved'\);)(?!gap\.style\.width)",
+            r"\1gap.style.width='auto';gap.style.minWidth='0';",
+            html,count=1)
+          print('solved-gap patches:',n)
+
+          if "const SETTINGS_KEY='gapStudySettingsV1';" not in html:
+            anchor="const CUSTOM_IMPORTANT_KEY='gapStudyCustomImportantV1';"
+            code="""
+const SETTINGS_KEY='gapStudySettingsV1';
+function saveSettings(){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify({density:$('#density').value,chunk:$('#chunk').value,minLength:$('#minLength').value,mode:$('#mode').value,partial:$('#partial').checked,latex:$('#latex').checked,headings:$('#headings').checked}))}catch{}}
+function restoreSettings(){try{const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'null');if(!s)return;if(s.density!=null)$('#density').value=s.density;if(s.chunk!=null)$('#chunk').value=s.chunk;if(s.minLength!=null)$('#minLength').value=s.minLength;if(s.mode!=null)$('#mode').value=s.mode;if(s.partial!=null)$('#partial').checked=!!s.partial;if(s.latex!=null)$('#latex').checked=!!s.latex;if(s.headings!=null)$('#headings').checked=!!s.headings;$('#densityVal').textContent=$('#density').value+'%'}catch{}}
+"""
+            if anchor not in html: raise SystemExit('settings anchor missing')
+            html=html.replace(anchor,anchor+code,1)
+
+          if "['mode','partial','latex','headings'].forEach" not in html:
+            pattern=re.escape("$('#density').oninput=e=>$('#densityVal').textContent=e.target.value+'%';")
+            replacement="$('#density').oninput=e=>{$('#densityVal').textContent=e.target.value+'%';saveSettings()};['chunk','minLength'].forEach(id=>$('#'+id).addEventListener('input',saveSettings));['mode','partial','latex','headings'].forEach(id=>$('#'+id).addEventListener('change',saveSettings));restoreSettings();"
+            html,n2=re.subn(pattern,lambda _:replacement,html,count=1)
+            print('settings handler patches:',n2)
+            if not n2: raise SystemExit('density handler missing')
+
+          payload=base64.b64encode(gzip.compress(html.encode(),9)).decode()
+          p.write_text(loader[:m.start(1)]+payload+loader[m.end(1):])
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git diff --cached --quiet || git commit -m "Remember exercise settings and collapse solved gaps"
+          git push
