@@ -1,0 +1,113 @@
+name: Improve natural voice
+on:
+  push:
+    paths:
+      - '.github/workflows/improve-natural-voice.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Improve voice pacing and selection
+        shell: python
+        run: |
+          import re
+          from pathlib import Path
+
+          p = Path('index.html')
+          s = p.read_text()
+
+          s = s.replace(
+            '''    <select id="voiceLanguage" class="voice-language" aria-label="Voice language">
+      <option value="en-US">English</option><option value="de-DE">Deutsch</option><option value="uk-UA">Українська</option><option value="ru-RU">Русский</option>
+    </select>''',
+            '''    <select id="voiceLanguage" class="voice-language" aria-label="Voice language">
+      <option value="en-US">English</option><option value="de-DE">Deutsch</option><option value="uk-UA">Українська</option><option value="ru-RU">Русский</option>
+    </select>
+    <select id="voiceSelect" class="voice-language" aria-label="Reading voice"><option value="">Best available voice</option></select>'''
+          )
+
+          pattern = r"function voiceSpeak\(text,done\)\{.*?\}\nfunction voiceFlushText"
+          replacement = r'''const VOICE_PREF_KEY='gapStudyVoicePreferenceV1';
+let availableVoices=[];
+function loadVoiceChoices(){
+  availableVoices=speechSynthesis.getVoices();
+  const lang=$('#voiceLanguage').value.toLowerCase().split('-')[0];
+  const matching=availableVoices.filter(v=>v.lang.toLowerCase().startsWith(lang));
+  const select=$('#voiceSelect'),saved=localStorage.getItem(VOICE_PREF_KEY)||'';
+  select.innerHTML='<option value="">Best available voice</option>'+matching.map(v=>`<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)}${v.localService?'':' · online'}</option>`).join('');
+  if(matching.some(v=>v.name===saved))select.value=saved;
+}
+function preferredVoice(){
+  const requested=$('#voiceSelect').value;
+  if(requested)return availableVoices.find(v=>v.name===requested)||null;
+  const lang=$('#voiceLanguage').value.toLowerCase();
+  const candidates=availableVoices.filter(v=>v.lang.toLowerCase().startsWith(lang.split('-')[0]));
+  const premium=/premium|enhanced|natural|neural|samantha|ava|serena|daniel|anna|petra|milena|kateryna|yuri/i;
+  return candidates.find(v=>premium.test(v.name))||candidates.find(v=>v.default)||candidates[0]||null;
+}
+function splitSpeech(text){
+  const clean=text.replace(/\s+/g,' ').trim();
+  if(!clean)return [];
+  const sentences=clean.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[clean];
+  const chunks=[];
+  for(const sentence of sentences){
+    const parts=sentence.match(/[^,;:]+[,;:]?|[^,;:]+$/g)||[sentence];
+    for(const part of parts){
+      const words=part.trim().split(/\s+/);
+      if(words.length<=18){if(part.trim())chunks.push(part.trim());continue}
+      for(let i=0;i<words.length;i+=14)chunks.push(words.slice(i,i+14).join(' '));
+    }
+  }
+  return chunks;
+}
+function pauseAfter(chunk){
+  if(/[.!?]$/.test(chunk))return 480;
+  if(/[,;:]$/.test(chunk))return 230;
+  return 120;
+}
+function voiceSpeak(text,done){
+  if(!voiceRunning)return;
+  speechSynthesis.cancel();
+  const chunks=splitSpeech(text);let i=0;
+  const speakNext=()=>{
+    if(!voiceRunning)return;
+    if(i>=chunks.length){if(done)done();return}
+    const chunk=chunks[i++],u=new SpeechSynthesisUtterance(chunk);
+    u.lang=$('#voiceLanguage').value;u.rate=.86;u.pitch=1.01;u.volume=1;
+    const selected=preferredVoice();if(selected)u.voice=selected;
+    u.onstart=()=>voiceSetStatus(chunk,'speaking');
+    u.onend=()=>setTimeout(speakNext,pauseAfter(chunk));
+    u.onerror=()=>setTimeout(speakNext,150);
+    speechSynthesis.speak(u);
+  };
+  speakNext();
+}
+function voiceFlushText'''
+          s, n = re.subn(pattern, replacement, s, flags=re.S)
+          if n != 1:
+              raise SystemExit(f'voiceSpeak replacement count: {n}')
+
+          s = s.replace(
+            "function voicePromptGap(num){voiceCurrentGap=String(num);const input=document.querySelector(`#answer-row-${num} input`);if(!input){voiceNext();return}voiceSpeak(`Gap ${num}. Say the missing word.`,()=>voiceListen())}",
+            "function voicePromptGap(num){voiceCurrentGap=String(num);const input=document.querySelector(`#answer-row-${num} input`);if(!input){voiceNext();return}voiceSpeak(`Gap ${num}. Say the missing word.`,()=>setTimeout(voiceListen,650))}"
+          )
+          s = s.replace(
+            "function startVoiceMode(){if(!('speechSynthesis'in window)){alert('Speech playback is unavailable in this browser.');return}",
+            "function startVoiceMode(){if(!('speechSynthesis'in window)){alert('Speech playback is unavailable in this browser.');return}loadVoiceChoices();"
+          )
+          s = s.replace(
+            "$('#voiceStart').onclick=startVoiceMode;$('#voiceStop').onclick=stopVoiceMode;$('#voiceRepeat').onclick=voiceRepeatCurrent;$('#voiceSkip').onclick=voiceRevealCurrent;",
+            "speechSynthesis.onvoiceschanged=loadVoiceChoices;setTimeout(loadVoiceChoices,250);$('#voiceLanguage').addEventListener('change',loadVoiceChoices);$('#voiceSelect').addEventListener('change',()=>localStorage.setItem(VOICE_PREF_KEY,$('#voiceSelect').value));$('#voiceStart').onclick=startVoiceMode;$('#voiceStop').onclick=stopVoiceMode;$('#voiceRepeat').onclick=voiceRepeatCurrent;$('#voiceSkip').onclick=voiceRevealCurrent;"
+          )
+
+          p.write_text(s)
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git diff --cached --quiet || git commit -m "Make eyes-free speech more natural"
+          git push
