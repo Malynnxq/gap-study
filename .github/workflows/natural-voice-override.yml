@@ -1,0 +1,96 @@
+name: Natural voice override
+on:
+  push:
+    paths:
+      - '.github/workflows/natural-voice-override.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Append natural voice engine
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          marker='/* NATURAL_VOICE_ENGINE_V2 */'
+          if marker in s:
+              raise SystemExit(0)
+          addon=r'''
+/* NATURAL_VOICE_ENGINE_V2 */
+const VOICE_PREF_KEY_V2='gapStudyVoicePreferenceV2';
+let naturalVoices=[];
+(function installNaturalVoiceControls(){
+  const language=$('#voiceLanguage');
+  const select=document.createElement('select');
+  select.id='voiceSelect';select.className='voice-language';select.setAttribute('aria-label','Reading voice');
+  language.insertAdjacentElement('afterend',select);
+  function load(){
+    naturalVoices=speechSynthesis.getVoices();
+    const lang=language.value.toLowerCase().split('-')[0];
+    const matches=naturalVoices.filter(v=>v.lang.toLowerCase().startsWith(lang));
+    const saved=localStorage.getItem(VOICE_PREF_KEY_V2)||'';
+    select.innerHTML='<option value="">Best available voice</option>'+matches.map(v=>`<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)}${v.localService?'':' · online'}</option>`).join('');
+    if(matches.some(v=>v.name===saved))select.value=saved;
+  }
+  select.addEventListener('change',()=>localStorage.setItem(VOICE_PREF_KEY_V2,select.value));
+  language.addEventListener('change',load);
+  speechSynthesis.onvoiceschanged=load;
+  setTimeout(load,200);
+})();
+function naturalPreferredVoice(){
+  const selected=$('#voiceSelect')?.value;
+  if(selected)return naturalVoices.find(v=>v.name===selected)||null;
+  const lang=$('#voiceLanguage').value.toLowerCase().split('-')[0];
+  const candidates=naturalVoices.filter(v=>v.lang.toLowerCase().startsWith(lang));
+  const preferred=/premium|enhanced|natural|neural|samantha|ava|serena|daniel|anna|petra|milena|kateryna|yuri/i;
+  return candidates.find(v=>preferred.test(v.name))||candidates.find(v=>v.default)||candidates[0]||null;
+}
+function naturalSpeechChunks(text){
+  const clean=text.replace(/\s+/g,' ').trim();if(!clean)return[];
+  const sentences=clean.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[clean],out=[];
+  for(const sentence of sentences){
+    const clauses=sentence.match(/[^,;:]+[,;:]?|[^,;:]+$/g)||[sentence];
+    for(const clause of clauses){
+      const words=clause.trim().split(/\s+/);
+      if(words.length<=16){if(clause.trim())out.push(clause.trim());continue}
+      for(let i=0;i<words.length;i+=13)out.push(words.slice(i,i+13).join(' '));
+    }
+  }
+  return out;
+}
+function naturalPause(chunk){if(/[.!?]$/.test(chunk))return520;if(/[,;:]$/.test(chunk))return260;return140}
+voiceSpeak=function(text,done){
+  if(!voiceRunning)return;speechSynthesis.cancel();
+  const chunks=naturalSpeechChunks(text);let i=0;
+  const next=()=>{
+    if(!voiceRunning)return;
+    if(i>=chunks.length){done?.();return}
+    const chunk=chunks[i++],u=new SpeechSynthesisUtterance(chunk);
+    u.lang=$('#voiceLanguage').value;u.rate=.84;u.pitch=1.02;u.volume=1;
+    const v=naturalPreferredVoice();if(v)u.voice=v;
+    u.onstart=()=>voiceSetStatus(chunk,'speaking');
+    u.onend=()=>setTimeout(next,naturalPause(chunk));
+    u.onerror=()=>setTimeout(next,180);
+    speechSynthesis.speak(u);
+  };next();
+};
+voicePromptGap=function(num){
+  voiceCurrentGap=String(num);
+  const input=document.querySelector(`#answer-row-${num} input`);
+  if(!input){voiceNext();return}
+  voiceSpeak(`Gap ${num}. Say the missing word.`,()=>setTimeout(voiceListen,750));
+};
+'''
+          s=s.replace('</script>',addon+'\n</script>')
+          p.write_text(s)
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git diff --cached --quiet || git commit -m "Improve voice naturalness and pauses"
+          git push
