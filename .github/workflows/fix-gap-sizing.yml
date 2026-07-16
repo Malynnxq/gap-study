@@ -1,0 +1,51 @@
+name: Fix gap sizing
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-gap-sizing.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch compressed site
+        shell: python
+        run: |
+          import base64, gzip, re
+          from pathlib import Path
+
+          path = Path('index.html')
+          loader = path.read_text()
+          match = re.search(r"const b='([^']+)'", loader)
+          if not match:
+              raise SystemExit('Compressed site payload not found')
+
+          html = gzip.decompress(base64.b64decode(match.group(1))).decode()
+          html = html.replace(
+              '.gap{display:inline-block;min-width:3.2em;border-bottom:2px solid var(--accent);font-weight:700;letter-spacing:.08em;text-align:center;cursor:pointer;scroll-margin-top:24px;border-radius:4px;padding:0 2px}',
+              '.gap{display:inline-block;min-width:3.2em;border-bottom:2px solid var(--accent);font-weight:700;letter-spacing:normal;text-align:left;cursor:pointer;scroll-margin-top:24px;border-radius:4px;padding:0 3px;white-space:nowrap;overflow:visible;line-height:1.15}'
+          )
+          html = html.replace(
+              '.gap-num{font-size:.7em;vertical-align:super;color:var(--accent);font-weight:700;margin-left:2px}',
+              '.gap-num{display:inline-block;font-size:.68em;vertical-align:baseline;position:relative;top:-.55em;color:var(--accent);font-weight:700;margin-left:4px;line-height:1}'
+          )
+          html = html.replace(
+              "function partialMask(w){const keep=Math.max(1,Math.min(3,Math.floor(w.length*.35)));return w.slice(0,keep)+'_'.repeat(Math.max(3,w.length-keep))}",
+              "function partialMask(w){const keep=Math.max(1,Math.min(3,Math.floor(w.length*.35)));return w.slice(0,keep)}"
+          )
+          html = html.replace(
+              "const n=state.gaps.length+1;state.gaps.push({answer:w,num:n});const mask=$('#partial').checked?partialMask(w):'_'.repeat(Math.min(12,Math.max(4,w.length)));return `<span class=\"gap\" id=\"gap-${n}\" data-gap=\"${n}\" role=\"button\" tabindex=\"0\" aria-label=\"Answer gap ${n}\">${mask}</span><sup class=\"gap-num\" data-gap=\"${n}\">${n}</sup>`;",
+              "const n=state.gaps.length+1;state.gaps.push({answer:w,num:n});const mask=$('#partial').checked?partialMask(w):'';const gapWidth=Math.max(4,Math.ceil(w.length*1.05));return `<span class=\"gap\" id=\"gap-${n}\" data-gap=\"${n}\" role=\"button\" tabindex=\"0\" aria-label=\"Answer gap ${n}\" style=\"width:${gapWidth}ch\">${mask}</span><sup class=\"gap-num\" data-gap=\"${n}\">${n}</sup>`;"
+          )
+
+          payload = base64.b64encode(gzip.compress(html.encode(), 9)).decode()
+          path.write_text(loader[:match.start(1)] + payload + loader[match.end(1):])
+      - name: Commit fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git diff --cached --quiet || git commit -m "Fix gap underline sizing"
+          git push
