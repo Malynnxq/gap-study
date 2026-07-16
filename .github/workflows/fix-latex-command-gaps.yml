@@ -1,0 +1,40 @@
+name: Fix LaTeX command gaps
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-latex-command-gaps.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Protect LaTeX command names
+        shell: python
+        run: |
+          import base64, gzip, re
+          from pathlib import Path
+
+          path = Path('index.html')
+          loader = path.read_text()
+          match = re.search(r"const b='([^']+)'", loader)
+          if not match:
+              raise SystemExit('Compressed site payload not found')
+
+          html = gzip.decompress(base64.b64decode(match.group(1))).decode()
+          old = "body.replace(/\\\\text\\{([^{}]+)\\}|[A-Za-z][A-Za-z0-9_]*/g,(m,inner,off)=>{const w=inner||m.replace(/^\\\\text\\{|\\}$/g,'');if(candidate(w)){toks.push({m,w,off,id:id++})}});"
+          new = "body.replace(/\\\\text\\{([^{}]+)\\}|[A-Za-z][A-Za-z0-9_]*/g,(m,inner,off)=>{if(!inner&&body[off-1]==='\\\\')return m;const w=inner||m.replace(/^\\\\text\\{|\\}$/g,'');if(candidate(w)){toks.push({m,w,off,id:id++})}return m});"
+          if old not in html:
+              raise SystemExit('Target LaTeX tokenizer was not found')
+          html = html.replace(old, new)
+
+          payload = base64.b64encode(gzip.compress(html.encode(), 9)).decode()
+          path.write_text(loader[:match.start(1)] + payload + loader[match.end(1):])
+      - name: Commit fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html
+          git diff --cached --quiet || git commit -m "Protect LaTeX command names from gaps"
+          git push
