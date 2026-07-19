@@ -111,6 +111,21 @@
     etaLabel.innerHTML = `<strong>Estimated finish: ${formatClock(finish)}</strong><span>· about ${formatRemaining(remainingMs)} left · ${done}/${eta.total} filled</span>`;
   }
 
+  function clearEtaSession() {
+    if (eta.timer) clearInterval(eta.timer);
+    pauseClock();
+    eta.total = 0;
+    eta.completed.clear();
+    eta.samples = [];
+    eta.activeElapsed = 0;
+    eta.activeSince = null;
+    eta.lastPaceMark = 0;
+    eta.timer = null;
+    eta.started = false;
+    eta.finishedAt = null;
+    etaLabel.hidden = true;
+  }
+
   function resetEta() {
     if (eta.timer) clearInterval(eta.timer);
     eta.total = pages.reduce((sum, item) => sum + item.gaps.length, 0);
@@ -202,6 +217,7 @@
   const generateButton = document.getElementById('generate');
   const originalGenerate = generateButton.onclick;
   generateButton.onclick = function generateWithEta(event) {
+    clearEtaSession();
     const result = originalGenerate.call(this, event);
     if (pages.length && studyIsVisible()) resetEta();
     return result;
