@@ -16,6 +16,7 @@
   <script>
     (async () => {
       const revision = '441c608dc8f834a420da113c8bcc375259f784c5';
+      const featureRevision = '65da348d349f7f34c9f2de6e80f774ef0e4528be';
       const sources = [
         `https://cdn.jsdelivr.net/gh/Malynnxq/gap-study@${revision}/index.html`,
         `https://raw.githubusercontent.com/Malynnxq/gap-study/${revision}/index.html`
@@ -36,7 +37,8 @@
         document.getElementById('loadingStatus').textContent = `Could not load the app. Please reload the page. (${lastError?.message || 'unknown error'})`;
         return;
       }
-      html = html.replace(/<\/body>/i, '<script src="eta.js?v=20260720-1"><\/script><script src="cloud-config.js?v=20260720-1"><\/script><script src="cloud-sync.js?v=20260720-1"><\/script></body>');
+      const assetBase = `https://cdn.jsdelivr.net/gh/Malynnxq/gap-study@${featureRevision}`;
+      html = html.replace(/<\/body>/i, `<script src="${assetBase}/eta.js"><\/script><script src="${assetBase}/cloud-config.js"><\/script><script src="${assetBase}/cloud-sync.js"><\/script></body>`);
       document.open();
       document.write(html);
       document.close();
