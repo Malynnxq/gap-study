@@ -1,6 +1,6 @@
 // Public browser configuration for cross-device sync.
-// The Supabase anon key is intentionally public; data access is protected by Row Level Security.
+// This publishable Supabase key is intentionally public; data access is protected by Row Level Security.
 window.GAP_STUDY_CLOUD_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: ''
+  supabaseUrl: 'https://zheqdechocfkcenbbxtf.supabase.co',
+  supabaseAnonKey: 'sb_publishable_b_rRg-UYUi-HIAcwrzSxLg_frNkyyWX'
 };
