@@ -58,24 +58,24 @@
   overlay.innerHTML = `
     <section class="cloud-sync-card" role="dialog" aria-modal="true" aria-labelledby="cloudSyncTitle">
       <div class="cloud-sync-head">
-        <div><h2 id="cloudSyncTitle">Cross-device progress</h2><p>Sign in with the same email on every device.</p></div>
+        <div><h2 id="cloudSyncTitle">Cross-device progress</h2><p>Use the same email and password on every device.</p></div>
         <button type="button" class="btn secondary cloud-sync-close" aria-label="Close">×</button>
       </div>
       <div class="cloud-sync-grid">
         <div class="field"><label for="cloudProjectUrl">Supabase project URL</label><input id="cloudProjectUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://your-project.supabase.co"></div>
         <div class="field"><label for="cloudAnonKey">Supabase anon key</label><input id="cloudAnonKey" type="password" autocomplete="off" placeholder="Public anon key"></div>
-        <div class="cloud-sync-row">
-          <button type="button" class="btn secondary" id="saveCloudConfig">Save cloud configuration</button>
-        </div>
+        <div class="cloud-sync-row"><button type="button" class="btn secondary" id="saveCloudConfig">Save cloud configuration</button></div>
         <hr>
-        <div class="field"><label for="cloudEmail">Email</label><input id="cloudEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"></div>
+        <div class="field"><label for="cloudEmail">Email</label><input id="cloudEmail" type="email" inputmode="email" autocomplete="username" placeholder="you@example.com"></div>
+        <div class="field"><label for="cloudPassword">Password</label><input id="cloudPassword" type="password" autocomplete="current-password" minlength="6" placeholder="At least 6 characters"></div>
         <div class="cloud-sync-row">
-          <button type="button" class="btn" id="cloudSignIn">Send sign-in link</button>
+          <button type="button" class="btn" id="cloudSignIn">Sign in</button>
+          <button type="button" class="btn secondary" id="cloudSignUp">Create account</button>
           <button type="button" class="btn secondary" id="cloudSyncNow">Sync now</button>
           <button type="button" class="btn secondary" id="cloudSignOut">Sign out</button>
         </div>
         <p class="cloud-sync-status" id="cloudSyncStatus" aria-live="polite"></p>
-        <p class="cloud-sync-note">The anon key may be stored in public site code. The Supabase table must have Row Level Security enabled so each account can access only its own row.</p>
+        <p class="cloud-sync-note">No magic links are used for normal sign-in. To avoid a confirmation email during account creation, disable “Confirm email” in Supabase Authentication settings.</p>
       </div>
     </section>
   `;
@@ -90,6 +90,7 @@
   const projectUrlInput = overlay.querySelector('#cloudProjectUrl');
   const anonKeyInput = overlay.querySelector('#cloudAnonKey');
   const emailInput = overlay.querySelector('#cloudEmail');
+  const passwordInput = overlay.querySelector('#cloudPassword');
   const statusElement = overlay.querySelector('#cloudSyncStatus');
   const signOutButton = overlay.querySelector('#cloudSignOut');
   const syncNowButton = overlay.querySelector('#cloudSyncNow');
@@ -139,14 +140,8 @@
   function refreshAuthUi() {
     signOutButton.disabled = !currentUser;
     syncNowButton.disabled = !currentUser;
-    if (!configurationReady()) {
-      setButtonState('Cloud sync: setup', 'warn');
-      return;
-    }
-    if (!navigator.onLine) {
-      setButtonState('Cloud sync: offline', 'warn');
-      return;
-    }
+    if (!configurationReady()) return setButtonState('Cloud sync: setup', 'warn');
+    if (!navigator.onLine) return setButtonState('Cloud sync: offline', 'warn');
     if (currentUser) setButtonState('Cloud sync: on', 'ok');
     else setButtonState('Cloud sync: sign in', 'idle');
   }
@@ -157,7 +152,7 @@
     refreshAuthUi();
     if (currentUser) setStatus(`Signed in as ${currentUser.email || 'your account'}.`, 'good');
     else if (!configurationReady()) setStatus('Add the Supabase project URL and public anon key first.');
-    else setStatus('Enter your email to receive a sign-in link.');
+    else setStatus('Enter your email and password.');
     window.setTimeout(() => (configurationReady() ? emailInput : projectUrlInput).focus(), 40);
   }
 
@@ -208,11 +203,9 @@
   function mergeSessions(localPayload, remotePayload) {
     if (!isSessionPayload(localPayload)) return remotePayload;
     if (!isSessionPayload(remotePayload)) return localPayload;
-
     const localNewer = sessionTime(localPayload) >= sessionTime(remotePayload);
     const newer = localNewer ? localPayload : remotePayload;
     const older = localNewer ? remotePayload : localPayload;
-
     if (!sameExercise(localPayload, remotePayload)) return newer;
 
     const completed = mergeEntryArrays(older.completed, newer.completed);
@@ -262,7 +255,6 @@
       banner.hidden = false;
       return;
     }
-
     const raw = JSON.stringify(payload);
     pendingRemotePayload = null;
     banner.hidden = true;
@@ -275,9 +267,7 @@
   banner.querySelector('#applyCloudProgress').addEventListener('click', () => {
     if (pendingRemotePayload) applyCloudPayload(pendingRemotePayload, true);
   });
-  banner.querySelector('#dismissCloudProgress').addEventListener('click', () => {
-    banner.hidden = true;
-  });
+  banner.querySelector('#dismissCloudProgress').addEventListener('click', () => { banner.hidden = true; });
 
   async function createSupabaseClient() {
     if (client) return client;
@@ -288,9 +278,8 @@
       const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
       const config = effectiveConfig();
       client = createClient(config.supabaseUrl.replace(/\/$/, ''), config.supabaseAnonKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
       });
-
       client.auth.onAuthStateChange((_event, session) => {
         currentUser = session?.user || null;
         refreshAuthUi();
@@ -299,25 +288,19 @@
           scheduleSync(60);
         } else stopSyncLoops();
       });
-
       const { data, error } = await client.auth.getSession();
       if (error) throw error;
       currentUser = data.session?.user || null;
       refreshAuthUi();
       return client;
     })().finally(() => { clientPromise = null; });
-
     return clientPromise;
   }
 
   async function fetchRemotePayload() {
     const supabase = await createSupabaseClient();
     if (!currentUser) return null;
-    const { data, error } = await supabase
-      .from(TABLE_NAME)
-      .select('payload, updated_at')
-      .eq('user_id', currentUser.id)
-      .maybeSingle();
+    const { data, error } = await supabase.from(TABLE_NAME).select('payload, updated_at').eq('user_id', currentUser.id).maybeSingle();
     if (error) throw error;
     return data?.payload || null;
   }
@@ -345,23 +328,20 @@
       currentUser = data.session?.user || null;
       refreshAuthUi();
       if (!currentUser) return;
-
       if (reason === 'manual') setStatus('Synchronizing…');
+
       const localPayload = readLocalPayload();
       const remotePayload = await fetchRemotePayload();
-
       if (!isSessionPayload(localPayload) && !isSessionPayload(remotePayload)) {
         if (reason === 'manual') setStatus('There is no active exercise to synchronize.');
         return;
       }
-
       if (!isSessionPayload(remotePayload) && isSessionPayload(localPayload)) {
         await uploadPayload(localPayload);
         lastLocalRaw = JSON.stringify(localPayload);
         if (reason === 'manual') setStatus('Progress uploaded.', 'good');
         return;
       }
-
       if (!isSessionPayload(localPayload) && isSessionPayload(remotePayload)) {
         if (reason === 'manual') setStatus('Cloud progress found. Loading it…', 'good');
         applyCloudPayload(remotePayload, true);
@@ -372,17 +352,12 @@
       const mergedSignature = payloadSignature(merged);
       const localSignature = payloadSignature(localPayload);
       const remoteSignature = payloadSignature(remotePayload);
-
-      if (mergedSignature !== remoteSignature || sessionTime(merged) > sessionTime(remotePayload)) {
-        await uploadPayload(merged);
-      }
-
+      if (mergedSignature !== remoteSignature || sessionTime(merged) > sessionTime(remotePayload)) await uploadPayload(merged);
       if (mergedSignature !== localSignature || sessionTime(merged) > sessionTime(localPayload)) {
         if (!hasBootstrappedCloud || document.hidden || !pageIsBeingEdited()) applyCloudPayload(merged, true);
         else applyCloudPayload(merged, false);
         return;
       }
-
       lastLocalRaw = localStorage.getItem(LOCAL_SESSION_KEY) || '';
       storeCloudMeta(merged);
       if (reason === 'manual') setStatus('Progress is up to date.', 'good');
@@ -394,7 +369,6 @@
       hasBootstrappedCloud = true;
       syncPromise = null;
     });
-
     return syncPromise;
   }
 
@@ -428,50 +402,71 @@
     syncDebounce = null;
   }
 
+  function readCredentials() {
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!email || !email.includes('@')) throw new Error('Enter a valid email address.');
+    if (password.length < 6) throw new Error('Password must contain at least 6 characters.');
+    return { email, password };
+  }
+
+  async function finishAuthentication(message) {
+    const supabase = await createSupabaseClient();
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    currentUser = data.session?.user || null;
+    refreshAuthUi();
+    if (!currentUser) return false;
+    passwordInput.value = '';
+    setStatus(message, 'good');
+    startSyncLoops();
+    await synchronize('manual');
+    return true;
+  }
+
   overlay.querySelector('#saveCloudConfig').addEventListener('click', async () => {
-    const config = {
-      supabaseUrl: projectUrlInput.value.trim(),
-      supabaseAnonKey: anonKeyInput.value.trim()
-    };
+    const config = { supabaseUrl: projectUrlInput.value.trim(), supabaseAnonKey: anonKeyInput.value.trim() };
     localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(config));
     client = null;
     currentUser = null;
     stopSyncLoops();
     refreshAuthUi();
-    if (!configurationReady()) {
-      setStatus('The project URL or anon key does not look complete.', 'bad');
-      return;
-    }
+    if (!configurationReady()) return setStatus('The project URL or anon key does not look complete.', 'bad');
     try {
       await createSupabaseClient();
       setStatus('Cloud configuration saved.', 'good');
-      if (currentUser) {
-        startSyncLoops();
-        await synchronize('manual');
-      }
     } catch (error) {
       setStatus(error.message || 'Could not connect to Supabase.', 'bad');
     }
   });
 
   overlay.querySelector('#cloudSignIn').addEventListener('click', async () => {
-    const email = emailInput.value.trim();
-    if (!email || !email.includes('@')) {
-      setStatus('Enter a valid email address.', 'bad');
-      return;
-    }
     try {
+      const credentials = readCredentials();
       const supabase = await createSupabaseClient();
-      setStatus('Sending the sign-in link…');
-      const redirectTo = `${location.origin}${location.pathname}`;
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: redirectTo }
-      });
+      setStatus('Signing in…');
+      const { error } = await supabase.auth.signInWithPassword(credentials);
       if (error) throw error;
-      setStatus('Check your email and open the sign-in link on this device.', 'good');
+      await finishAuthentication('Signed in.');
     } catch (error) {
-      setStatus(error.message || 'Could not send the sign-in link.', 'bad');
+      setStatus(error.message || 'Could not sign in.', 'bad');
+    }
+  });
+
+  overlay.querySelector('#cloudSignUp').addEventListener('click', async () => {
+    try {
+      const credentials = readCredentials();
+      const supabase = await createSupabaseClient();
+      setStatus('Creating account…');
+      const { data, error } = await supabase.auth.signUp(credentials);
+      if (error) throw error;
+      if (!data.session) {
+        setStatus('Account created, but Supabase still requires email confirmation. Disable “Confirm email” in Authentication settings, then create the account again or confirm it once.', 'bad');
+        return;
+      }
+      await finishAuthentication('Account created and signed in.');
+    } catch (error) {
+      setStatus(error.message || 'Could not create the account.', 'bad');
     }
   });
 
@@ -489,6 +484,10 @@
     } catch (error) {
       setStatus(error.message || 'Could not sign out.', 'bad');
     }
+  });
+
+  passwordInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !currentUser) overlay.querySelector('#cloudSignIn').click();
   });
 
   window.addEventListener('online', () => {
