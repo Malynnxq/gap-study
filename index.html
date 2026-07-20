@@ -17,8 +17,8 @@
     (async () => {
       const revision = '441c608dc8f834a420da113c8bcc375259f784c5';
       const featureRevision = '8fc348525ed5287b6ea9499e50a48cc077f8eb66';
-      const buildLabel = 'no-auto-reload';
-      const titleColor = '#d81b60';
+      const buildLabel = 'cloud-back';
+      const titleColor = '#1565c0';
       const sources = [
         `https://cdn.jsdelivr.net/gh/Malynnxq/gap-study@${revision}/index.html`,
         `https://raw.githubusercontent.com/Malynnxq/gap-study/${revision}/index.html`
@@ -42,7 +42,7 @@
       const assetBase = `https://cdn.jsdelivr.net/gh/Malynnxq/gap-study@${featureRevision}`;
       const buildMarker = `<style>.top h1{color:${titleColor}!important}.gap-study-build{display:inline-block;margin-left:.55rem;padding:.16rem .42rem;border:1px solid currentColor;border-radius:999px;font-size:.68rem;vertical-align:middle;opacity:.8}</style><script>addEventListener('DOMContentLoaded',()=>{const h=document.querySelector('.top h1');if(h&&!h.querySelector('.gap-study-build'))h.insertAdjacentHTML('beforeend','<span class="gap-study-build">build ${buildLabel}</span>')});<\/script>`;
       html = html.replace(/<\/head>/i, `${buildMarker}</head>`);
-      const cloudLoader = `<script>(async()=>{try{const r=await fetch('${assetBase}/cloud-sync.js',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);let s=await r.text();s=s.replace('if (mergedSignature !== remoteSignature || sessionTime(merged) > sessionTime(remotePayload)) await uploadPayload(merged);','if (mergedSignature !== remoteSignature) await uploadPayload(merged);');s=s.replace('if (mergedSignature !== localSignature || sessionTime(merged) > sessionTime(localPayload)) {','if (mergedSignature !== localSignature) {');s=s.replace('window.setTimeout(() => location.reload(), 80);','if (!overlay.hidden) setStatus(\'Cloud progress saved. Reload manually only when you want to display remote changes.\', \'good\');');(0,eval)(s)}catch(e){console.error('Could not start cloud sync.',e)}})();<\/script>`;
+      const cloudLoader = `<script>(async()=>{try{const r=await fetch('${assetBase}/cloud-sync.js',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);let s=await r.text();s=s.replace('if (mergedSignature !== remoteSignature || sessionTime(merged) > sessionTime(remotePayload)) await uploadPayload(merged);','if (mergedSignature !== remoteSignature) await uploadPayload(merged);');s=s.replace('if (mergedSignature !== localSignature || sessionTime(merged) > sessionTime(localPayload)) {','if (mergedSignature !== localSignature) {');s=s.replace('window.setTimeout(() => location.reload(), 80);','');(0,eval)(s)}catch(e){console.error('Could not start cloud sync.',e)}})();<\/script>`;
       html = html.replace(/<\/body>/i, `<script src="${assetBase}/eta.js"><\/script><script src="${assetBase}/cloud-config.js"><\/script>${cloudLoader}</body>`);
       document.open();
       document.write(html);
