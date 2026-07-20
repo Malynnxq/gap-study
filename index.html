@@ -16,7 +16,9 @@
   <script>
     (async () => {
       const revision = '441c608dc8f834a420da113c8bcc375259f784c5';
-      const featureRevision = '65da348d349f7f34c9f2de6e80f774ef0e4528be';
+      const featureRevision = '435ecd043ffa063c164a7ec1030354ece8b991dd';
+      const buildLabel = '435ecd0';
+      const titleColor = '#d12f8a';
       const sources = [
         `https://cdn.jsdelivr.net/gh/Malynnxq/gap-study@${revision}/index.html`,
         `https://raw.githubusercontent.com/Malynnxq/gap-study/${revision}/index.html`
@@ -38,6 +40,8 @@
         return;
       }
       const assetBase = `https://cdn.jsdelivr.net/gh/Malynnxq/gap-study@${featureRevision}`;
+      const buildMarker = `<style>.top h1{color:${titleColor}!important}.gap-study-build{display:inline-block;margin-left:.55rem;padding:.16rem .42rem;border:1px solid currentColor;border-radius:999px;font-size:.68rem;vertical-align:middle;opacity:.8}</style><script>addEventListener('DOMContentLoaded',()=>{const h=document.querySelector('.top h1');if(h&&!h.querySelector('.gap-study-build'))h.insertAdjacentHTML('beforeend','<span class="gap-study-build">build ${buildLabel}</span>')});<\/script>`;
+      html = html.replace(/<\/head>/i, `${buildMarker}</head>`);
       html = html.replace(/<\/body>/i, `<script src="${assetBase}/eta.js"><\/script><script src="${assetBase}/cloud-config.js"><\/script><script src="${assetBase}/cloud-sync.js"><\/script></body>`);
       document.open();
       document.write(html);
