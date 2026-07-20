@@ -17,8 +17,8 @@
     (async () => {
       const revision = '441c608dc8f834a420da113c8bcc375259f784c5';
       const featureRevision = '8fc348525ed5287b6ea9499e50a48cc077f8eb66';
-      const buildLabel = 'direct-cloud-loader';
-      const titleColor = '#6a1b9a';
+      const buildLabel = 'sync-ui-refresh';
+      const titleColor = '#c62828';
       const sources = [
         `https://cdn.jsdelivr.net/gh/Malynnxq/gap-study@${revision}/index.html`,
         `https://raw.githubusercontent.com/Malynnxq/gap-study/${revision}/index.html`
@@ -44,7 +44,8 @@
       const buildMarker = `<style>.top h1{color:${titleColor}!important}.gap-study-build{display:inline-block;margin-left:.55rem;padding:.16rem .42rem;border:1px solid currentColor;border-radius:999px;font-size:.68rem;vertical-align:middle;opacity:.8}</style><script>addEventListener('DOMContentLoaded',()=>{const h=document.querySelector('.top h1');if(h&&!h.querySelector('.gap-study-build'))h.insertAdjacentHTML('beforeend','<span class="gap-study-build">build ${buildLabel}</span>')});<\/script>`;
       html = html.replace(/<\/head>/i, `${buildMarker}</head>`);
       const cloudLoader = `<script>(async()=>{try{const r=await fetch('${branchBase}/cloud-sync.js?v=${Date.now()}',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);(0,eval)(await r.text())}catch(e){console.error('Could not start cloud sync.',e)}})();<\/script>`;
-      html = html.replace(/<\/body>/i, `<script src="${assetBase}/eta.js"><\/script><script src="${assetBase}/cloud-config.js"><\/script>${cloudLoader}</body>`);
+      const syncUiRefresh = `<script>(()=>{document.addEventListener('click',event=>{const button=event.target.closest('#cloudSyncNow');if(!button||button.disabled)return;window.setTimeout(()=>location.reload(),1200)},true)})();<\/script>`;
+      html = html.replace(/<\/body>/i, `<script src="${assetBase}/eta.js"><\/script><script src="${assetBase}/cloud-config.js"><\/script>${cloudLoader}${syncUiRefresh}</body>`);
       document.open();
       document.write(html);
       document.close();
