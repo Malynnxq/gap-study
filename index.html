@@ -17,8 +17,8 @@
     (async () => {
       const revision = '441c608dc8f834a420da113c8bcc375259f784c5';
       const featureRevision = '8fc348525ed5287b6ea9499e50a48cc077f8eb66';
-      const buildLabel = 'sync-ui-refresh';
-      const titleColor = '#c62828';
+      const buildLabel = 'live-reconcile-v1';
+      const titleColor = '#ad1457';
       const sources = [
         `https://cdn.jsdelivr.net/gh/Malynnxq/gap-study@${revision}/index.html`,
         `https://raw.githubusercontent.com/Malynnxq/gap-study/${revision}/index.html`
@@ -43,9 +43,158 @@
       const branchBase = 'https://raw.githubusercontent.com/Malynnxq/gap-study/feature/cross-device-sync';
       const buildMarker = `<style>.top h1{color:${titleColor}!important}.gap-study-build{display:inline-block;margin-left:.55rem;padding:.16rem .42rem;border:1px solid currentColor;border-radius:999px;font-size:.68rem;vertical-align:middle;opacity:.8}</style><script>addEventListener('DOMContentLoaded',()=>{const h=document.querySelector('.top h1');if(h&&!h.querySelector('.gap-study-build'))h.insertAdjacentHTML('beforeend','<span class="gap-study-build">build ${buildLabel}</span>')});<\/script>`;
       html = html.replace(/<\/head>/i, `${buildMarker}</head>`);
+      const sessionGuard = `<script>(() => {
+  'use strict';
+  const key = 'gapStudyActiveSessionV2';
+  const originalSetItem = Storage.prototype.setItem;
+  const parse = value => {
+    try { return JSON.parse(value); } catch { return null; }
+  };
+  const valid = payload => Boolean(payload && payload.version === 2 && Array.isArray(payload.pages) && payload.pages.length);
+  const sameExercise = (a, b) => valid(a) && valid(b) && (
+    (typeof a.source === 'string' && a.source && a.source === b.source) ||
+    JSON.stringify(a.pages) === JSON.stringify(b.pages)
+  );
+  const mapOf = entries => new Map(Array.isArray(entries) ? entries.filter(item => Array.isArray(item) && item.length >= 2) : []);
+  const textOf = value => String(value?.value ?? value?.answer ?? '').trim();
+  const rank = value => value?.correct ? 3 : textOf(value) ? 2 : value ? 1 : 0;
+
+  Storage.prototype.setItem = function guardedSetItem(storageKey, rawValue) {
+    if (this !== localStorage || storageKey !== key) {
+      return originalSetItem.call(this, storageKey, rawValue);
+    }
+
+    const incoming = parse(String(rawValue));
+    const existing = parse(localStorage.getItem(key));
+    if (!sameExercise(existing, incoming)) {
+      return originalSetItem.call(this, storageKey, rawValue);
+    }
+
+    const completed = mapOf(existing.completed);
+    for (const [gapKey, value] of mapOf(incoming.completed)) completed.set(gapKey, value);
+
+    const drafts = mapOf(existing.drafts);
+    for (const [gapKey, value] of mapOf(incoming.drafts)) {
+      if (rank(value) >= rank(drafts.get(gapKey))) drafts.set(gapKey, value);
+    }
+    for (const [gapKey, value] of completed) {
+      const answer = value?.answer ?? textOf(drafts.get(gapKey));
+      drafts.set(gapKey, { value: answer, correct: true, wrong: false });
+    }
+
+    const existingTime = Date.parse(existing.savedAt || '') || 0;
+    const incomingTime = Date.parse(incoming.savedAt || '') || 0;
+    const merged = {
+      ...existing,
+      ...incoming,
+      completed: [...completed.entries()],
+      drafts: [...drafts.entries()],
+      totalCorrect: Math.max(Number(existing.totalCorrect) || 0, Number(incoming.totalCorrect) || 0),
+      totalAnswered: Math.max(Number(existing.totalAnswered) || 0, Number(incoming.totalAnswered) || 0),
+      total: Math.max(Number(existing.total) || 0, Number(incoming.total) || 0),
+      savedAt: existingTime > incomingTime ? existing.savedAt : (incoming.savedAt || existing.savedAt || new Date().toISOString())
+    };
+    return originalSetItem.call(this, storageKey, JSON.stringify(merged));
+  };
+})();
+<\/script>`;
       const cloudLoader = `<script>(async()=>{try{const r=await fetch('${branchBase}/cloud-sync.js?v=${Date.now()}',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);(0,eval)(await r.text())}catch(e){console.error('Could not start cloud sync.',e)}})();<\/script>`;
-      const syncUiRefresh = `<script>(()=>{document.addEventListener('click',event=>{const button=event.target.closest('#cloudSyncNow');if(!button||button.disabled)return;window.setTimeout(()=>location.reload(),1200)},true)})();<\/script>`;
-      html = html.replace(/<\/body>/i, `<script src="${assetBase}/eta.js"><\/script><script src="${assetBase}/cloud-config.js"><\/script>${cloudLoader}${syncUiRefresh}</body>`);
+      const liveReconciler = `<script>(() => {
+  'use strict';
+  const SESSION_KEY = 'gapStudyActiveSessionV2';
+  const BUILD_LABEL = 'live-reconcile-v1';
+  const TITLE_COLOR = '#ad1457';
+  let reconciling = false;
+
+  function readPayload() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }
+    catch { return null; }
+  }
+
+  function applyBuildMarker() {
+    const title = document.querySelector('.top h1');
+    if (!title) return;
+    title.style.setProperty('color', TITLE_COLOR, 'important');
+    let badge = title.querySelector('.gap-study-build');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'gap-study-build';
+      title.appendChild(badge);
+    }
+    badge.textContent = \`build \${BUILD_LABEL}\`;
+  }
+
+  function completedMap(payload) {
+    return new Map(Array.isArray(payload?.completed) ? payload.completed : []);
+  }
+
+  function draftMap(payload) {
+    return new Map(Array.isArray(payload?.drafts) ? payload.drafts : []);
+  }
+
+  function reconcileCurrentPage() {
+    applyBuildMarker();
+    if (reconciling) return;
+    const payload = readPayload();
+    if (!payload || payload.version !== 2) return;
+    const inputs = [...document.querySelectorAll('#answers input[data-gap]')];
+    if (!inputs.length) return;
+
+    const pageIndex = typeof page === 'number' ? page : (Number(payload.page) || 0);
+    const completed = completedMap(payload);
+    const drafts = draftMap(payload);
+    const missing = [];
+
+    for (const input of inputs) {
+      const key = \`\${pageIndex}:\${input.dataset.gap}\`;
+      const done = completed.get(key);
+      const draft = drafts.get(key);
+      if (!done && !draft?.correct) continue;
+      const value = String(done?.answer ?? draft?.value ?? input.dataset.answer ?? '');
+      if (!value || input.classList.contains('correct')) continue;
+      input.value = value;
+      missing.push(input);
+    }
+
+    if (!missing.length) return;
+    reconciling = true;
+    const canCheck = typeof checkOne === 'function';
+    let originalScrollBack = null;
+    if (typeof scrollBackToGap === 'function') {
+      originalScrollBack = scrollBackToGap;
+      scrollBackToGap = () => {};
+    }
+
+    try {
+      for (const input of missing) {
+        if (canCheck) checkOne(input);
+        else {
+          input.classList.add('correct');
+          input.classList.remove('wrong');
+          const gap = document.getElementById(\`gap-\${input.dataset.gap}\`);
+          if (gap) {
+            gap.textContent = input.dataset.answer;
+            gap.classList.add('solved');
+            gap.style.width = 'auto';
+            gap.style.minWidth = '0';
+          }
+        }
+      }
+    } finally {
+      window.setTimeout(() => {
+        if (originalScrollBack) scrollBackToGap = originalScrollBack;
+        reconciling = false;
+      }, 350);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', reconcileCurrentPage);
+  window.addEventListener('pageshow', reconcileCurrentPage);
+  window.setInterval(reconcileCurrentPage, 700);
+  window.setTimeout(reconcileCurrentPage, 80);
+})();
+<\/script>`;
+      html = html.replace(/<\/body>/i, `${sessionGuard}<script src="${assetBase}/eta.js"><\/script><script src="${assetBase}/cloud-config.js"><\/script>${cloudLoader}${liveReconciler}</body>`);
       document.open();
       document.write(html);
       document.close();
