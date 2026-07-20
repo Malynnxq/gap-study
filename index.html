@@ -36,7 +36,7 @@
         document.getElementById('loadingStatus').textContent = `Could not load the app. Please reload the page. (${lastError?.message || 'unknown error'})`;
         return;
       }
-      html = html.replace(/<\/body>/i, '<script src="eta.js?v=20260719-3"><\/script></body>');
+      html = html.replace(/<\/body>/i, '<script src="eta.js?v=20260720-1"><\/script><script src="cloud-config.js?v=20260720-1"><\/script><script src="cloud-sync.js?v=20260720-1"><\/script></body>');
       document.open();
       document.write(html);
       document.close();
